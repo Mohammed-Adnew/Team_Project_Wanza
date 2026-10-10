@@ -13,5 +13,20 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database:/docker-entrypoint-initdb.d:ro
 
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wanza_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-wanza_user}:${POSTGRES_PASSWORD:-wanza_password}@postgres:5432/${POSTGRES_DB:-wanza_db}
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app/backend
+
 volumes:
   postgres_data:
