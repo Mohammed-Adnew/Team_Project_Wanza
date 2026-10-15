@@ -4,4 +4,21 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    host: true,
+    proxy: {
+      '/reports': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+      },
+      '/compliance-status': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+      },
+    },
+  },
 });
