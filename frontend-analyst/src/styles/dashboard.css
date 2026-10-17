@@ -359,61 +359,130 @@ body {
   font-weight: 600;
 }
 
-/* Telemetry Wave Chart */
-.chart-container {
+/* ========================================================
+   TELEMETRY PANEL (CLEAN SOC VISUALIZATIONS)
+   ======================================================== */
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.telemetry-box {
+  background: #f8fafc;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  justify-content: space-between;
 }
 
-.chart-legend {
+.telemetry-header {
   display: flex;
-  gap: 1.25rem;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #334155;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
 }
 
-.chart-legend span {
+.telemetry-header strong {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.telemetry-header span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* Exposure Bar Track */
+.exposure-bar-track {
+  height: 14px;
+  background: #e2e8f0;
+  border-radius: 7px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 1rem;
+}
+
+.seg-high { background: #dc2626; transition: width 0.3s ease; }
+.seg-med { background: #d97706; transition: width 0.3s ease; }
+.seg-low { background: #16a34a; transition: width 0.3s ease; }
+
+.telemetry-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stat-item {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
 }
 
-.chart-legend i {
-  width: 10px;
-  height: 10px;
+.dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  display: inline-block;
+  flex-shrink: 0;
 }
 
-.legend-red { background: #dc2626; }
-.legend-amber { background: #d97706; }
-.legend-green { background: #16a34a; }
+.dot.red { background: #dc2626; }
+.dot.amber { background: #d97706; }
+.dot.green { background: #16a34a; }
 
-.chart-wrapper {
+/* Triage Pipeline Steps */
+.pipeline-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.step-card {
   background: #ffffff;
   border: 1.5px solid var(--border-color);
-  border-radius: 8px;
-  padding: 1rem;
-  overflow: hidden;
-}
-
-.telemetry-svg {
-  width: 100%;
-  height: 110px;
-  display: block;
-}
-
-.chart-x-labels {
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  flex: 1;
+  text-align: center;
   display: flex;
-  justify-content: space-between;
-  margin-top: 0.5rem;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.step-label {
   font-size: 0.75rem;
   font-weight: 700;
   color: #64748b;
-  border-top: 1px solid #e2e8f0;
-  padding-top: 0.5rem;
+}
+
+.step-num {
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.step-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.text-amber { color: #d97706; }
+.text-blue { color: #2563eb; }
+.text-green { color: #16a34a; }
+
+.pipeline-arrow {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #94a3b8;
 }
 
 /* Main Grid */
@@ -720,10 +789,13 @@ td {
 }
 
 /* ========================================================
-   RESPONSIVE DESIGN (TABLETS & MOBILE SCREENS)
+   RESPONSIVE DESIGN (TABLETS & MOBILE)
    ======================================================== */
 @media (max-width: 900px) {
   .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .telemetry-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -789,6 +861,20 @@ td {
 
   .metric-value {
     font-size: 1.75rem;
+  }
+
+  .telemetry-stats {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .pipeline-steps {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .pipeline-arrow {
+    transform: rotate(90deg);
   }
 
   .footer {

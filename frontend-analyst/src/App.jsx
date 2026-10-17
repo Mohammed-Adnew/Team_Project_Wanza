@@ -47,7 +47,7 @@ export default function App() {
             type: r.subject || "Reported Phish",
             source: r.sender_actual || r.sender_claimed || (r.link ? r.link : "Unknown source"),
             severity: (r.severity || "Low").charAt(0).toUpperCase() + (r.severity || "Low").slice(1),
-            status: r.status || "new",
+            status: (r.status || "new").toLowerCase(),
             score: r.risk_score ?? 0,
           };
         });
@@ -113,16 +113,22 @@ export default function App() {
       .includes(search.toLowerCase())
   );
 
-  const pendingCount = threats.filter(
-    (t) => t.status.toLowerCase() === "new" || t.status.toLowerCase() === "under review"
-  ).length;
+  // Dynamic calculations
+  const totalReports = threats.length || 1; // prevent divide by zero
   const highRiskCount = threats.filter((t) => t.severity.toLowerCase() === "high").length;
   const medRiskCount = threats.filter((t) => t.severity.toLowerCase() === "medium").length;
   const lowRiskCount = threats.filter((t) => t.severity.toLowerCase() === "low").length;
 
+  const highPct = Math.round((highRiskCount / totalReports) * 100);
+  const medPct = Math.round((medRiskCount / totalReports) * 100);
+  const lowPct = Math.round((lowRiskCount / totalReports) * 100);
+
+  const statusNew = threats.filter((t) => t.status === "new").length;
+  const statusReview = threats.filter((t) => t.status === "under review").length;
+  const statusMitigated = threats.filter((t) => t.status === "blocked" || t.status === "resolved").length;
+
   return (
     <div className={`dashboard ${menuOpen ? "nav-open" : ""}`}>
-      {/* Mobile Backdrop */}
       {menuOpen && <div className="backdrop" onClick={() => setMenuOpen(false)} />}
 
       <aside className="sidebar">
@@ -185,7 +191,7 @@ export default function App() {
             </button>
           </section>
 
-          {/* Metric Grid */}
+          {/* Metric Cards */}
           <section className="metric-grid" aria-label="Security metrics">
             <article className="metric-card">
               <div className="metric-icon blue">⌕</div>
@@ -198,13 +204,13 @@ export default function App() {
               <div className="metric-icon red">⚠</div>
               <div className="metric-label">High Severity</div>
               <div className="metric-value">{highRiskCount}</div>
-              <div className="metric-note">Actionable threats</div>
+              <div className="metric-note">Immediate remediation</div>
             </article>
 
             <article className="metric-card">
               <div className="metric-icon purple">⏳</div>
               <div className="metric-label">Triage Queue</div>
-              <div className="metric-value">{pendingCount}</div>
+              <div className="metric-value">{statusNew + statusReview}</div>
               <div className="metric-note">Awaiting analyst action</div>
             </article>
 
@@ -216,46 +222,67 @@ export default function App() {
             </article>
           </section>
 
-          {/* Dynamic Visual Activity Chart */}
+          {/* Clean SOC Telemetry Dashboard Panel */}
           {(active === "Overview" || active === "Phishing Analysis") && (
             <Panel
-              title="Threat Telemetry & Severity Distribution"
-              extra={<span className="table-count">{threats.length} total events</span>}
+              title="Threat Telemetry & Risk Posture"
+              extra={<span className="table-count">{threats.length} logged incidents</span>}
             >
-              <div className="chart-container">
-                <div className="chart-legend">
-                  <span><i className="legend-red" /> High ({highRiskCount})</span>
-                  <span><i className="legend-amber" /> Medium ({medRiskCount})</span>
-                  <span><i className="legend-green" /> Low ({lowRiskCount})</span>
+              <div className="telemetry-grid">
+                {/* Visual Section 1: Severity Exposure Bar */}
+                <div className="telemetry-box">
+                  <div className="telemetry-header">
+                    <strong>Severity Distribution</strong>
+                    <span>Ratio of incoming risk</span>
+                  </div>
+                  
+                  <div className="exposure-bar-track">
+                    <div style={{ width: `${threats.length ? highPct : 0}%` }} className="seg-high" title={`High: ${highPct}%`} />
+                    <div style={{ width: `${threats.length ? medPct : 0}%` }} className="seg-med" title={`Medium: ${medPct}%`} />
+                    <div style={{ width: `${threats.length ? lowPct : 100}%` }} className="seg-low" title={`Low: ${lowPct}%`} />
+                  </div>
+
+                  <div className="telemetry-stats">
+                    <div className="stat-item">
+                      <span className="dot red" />
+                      <span>High Risk: <strong>{highRiskCount}</strong> <small>({threats.length ? highPct : 0}%)</small></span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="dot amber" />
+                      <span>Medium: <strong>{medRiskCount}</strong> <small>({threats.length ? medPct : 0}%)</small></span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="dot green" />
+                      <span>Low Risk: <strong>{lowRiskCount}</strong> <small>({threats.length ? lowPct : 0}%)</small></span>
+                    </div>
+                  </div>
                 </div>
-                
-                {/* Visual SVG Wave graph reflecting the active threat levels */}
-                <div className="chart-wrapper">
-                  <svg viewBox="0 0 700 140" preserveAspectRatio="none" className="telemetry-svg">
-                    <defs>
-                      <linearGradient id="cyberGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563eb" stopOpacity="0.4" />
-                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <polygon
-                      points={`0,120 100,${110 - lowRiskCount * 12} 250,${100 - medRiskCount * 15} 420,${90 - highRiskCount * 22} 550,${95 - threats.length * 8} 700,105 700,140 0,140`}
-                      fill="url(#cyberGradient)"
-                    />
-                    <polyline
-                      points={`0,120 100,${110 - lowRiskCount * 12} 250,${100 - medRiskCount * 15} 420,${90 - highRiskCount * 22} 550,${95 - threats.length * 8} 700,105`}
-                      fill="none"
-                      stroke="#2563eb"
-                      strokeWidth="3"
-                    />
-                  </svg>
-                  <div className="chart-x-labels">
-                    <span>Baseline</span>
-                    <span>Low Risk</span>
-                    <span>Medium Risk</span>
-                    <span>High Risk</span>
-                    <span>Active Queue</span>
-                    <span>Normalized</span>
+
+                {/* Visual Section 2: Triage Pipeline Funnel */}
+                <div className="telemetry-box">
+                  <div className="telemetry-header">
+                    <strong>Incident Triage Pipeline</strong>
+                    <span>Response lifecycle</span>
+                  </div>
+
+                  <div className="pipeline-steps">
+                    <div className="step-card">
+                      <span className="step-label">Unreviewed</span>
+                      <strong className="step-num text-amber">{statusNew}</strong>
+                      <span className="step-tag">New</span>
+                    </div>
+                    <div className="pipeline-arrow">→</div>
+                    <div className="step-card">
+                      <span className="step-label">In Progress</span>
+                      <strong className="step-num text-blue">{statusReview}</strong>
+                      <span className="step-tag">Under Review</span>
+                    </div>
+                    <div className="pipeline-arrow">→</div>
+                    <div className="step-card">
+                      <span className="step-label">Remediated</span>
+                      <strong className="step-num text-green">{statusMitigated}</strong>
+                      <span className="step-tag">Blocked / Resolved</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -308,7 +335,7 @@ export default function App() {
                             <td>
                               <select
                                 className="status-select"
-                                value={threat.status.toLowerCase()}
+                                value={threat.status}
                                 onChange={(e) => handleStatusChange(threat.id, e.target.value)}
                               >
                                 <option value="new">New</option>
