@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/reports",
+      "destination": "https://team-project-wanza.onrender.com/reports"
+    },
+    {
+      "source": "/reports/:path*",
+      "destination": "https://team-project-wanza.onrender.com/reports/:path*"
+    },
+    {
+      "source": "/compliance-status",
+      "destination": "https://team-project-wanza.onrender.com/compliance-status"
+    },
+    {
+      "source": "/inbox/:path*",
+      "destination": "https://team-project-wanza.onrender.com/inbox/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://team-project-wanza.onrender.com/health"
+    }
+  ]
+}
