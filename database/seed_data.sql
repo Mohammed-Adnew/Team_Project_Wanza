@@ -17,3 +17,10 @@ INSERT INTO simulated_inbox (sender, subject, body, is_phishing) VALUES
 ('security@crypto-wallet-verify.com', 'Wallet Suspended', 'Confirm your wallet seed phrase to restore access.', TRUE),
 ('community@developer-hub.com', 'Weekly Newsletter', 'Check out the top repository trends of this week.', FALSE),
 ('support@ethiopian-airlines-tickets.com', 'የቲኬት ማረጋገጫ ቅጽ', 'ዕድለኛ ሎተሪ አሸንፈዋል! ሊንኩን ይጫኑ https://win-ticket.com', TRUE);
+-- Seed data for Compliance Obligations
+INSERT INTO obligations (title, description, severity, status) 
+VALUES 
+    ('GDPR Data Privacy Compliance', 'Ensure user report logs do not leak PII data.', 'High', 'Met'),
+    ('Email Authentication Check', 'Verify SPF and DKIM records for reported emails.', 'Medium', 'Unmet'),
+    ('Incident Response Time', 'All critical phishing reports must be reviewed within 24 hours.', 'High', 'Unmet')
+ON CONFLICT DO NOTHING;
