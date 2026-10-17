@@ -46,7 +46,7 @@ export default function App() {
             type: r.subject || "Reported Phish",
             source: r.sender_actual || r.sender_claimed || (r.link ? r.link : "Unknown source"),
             severity: (r.severity || "Low").charAt(0).toUpperCase() + (r.severity || "Low").slice(1),
-            status: (r.status || "new").charAt(0).toUpperCase() + (r.status || "new").slice(1),
+            status: r.status || "new",
             score: r.risk_score ?? 0,
           };
         });
@@ -80,6 +80,28 @@ export default function App() {
       .catch((err) => console.error("Compliance fetch error:", err));
   };
 
+  const handleStatusChange = async (reportId, newStatus) => {
+    // Optimistic UI update
+    setThreats((prev) =>
+      prev.map((t) => (t.id === reportId ? { ...t, status: newStatus } : t))
+    );
+
+    try {
+      const res = await fetch(`/reports/${reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        console.error("Status update failed on server.");
+        loadReports();
+      }
+    } catch (err) {
+      console.error("PATCH error:", err);
+      loadReports();
+    }
+  };
+
   useEffect(() => {
     loadReports();
     loadCompliance();
@@ -91,7 +113,9 @@ export default function App() {
       .includes(search.toLowerCase())
   );
 
-  const pendingCount = threats.filter((t) => t.status.toLowerCase() === "new" || t.status.toLowerCase() === "under review").length;
+  const pendingCount = threats.filter(
+    (t) => t.status.toLowerCase() === "new" || t.status.toLowerCase() === "under review"
+  ).length;
   const highRiskCount = threats.filter((t) => t.severity.toLowerCase() === "high").length;
 
   return (
@@ -123,8 +147,8 @@ export default function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="status-indicator"><span /> PRODUCTION SECURE</div>
-          <p>Active monitoring and threat logging.</p>
+          <div className="status-indicator"><span /> SOC CONNECTED</div>
+          <p style={{ margin: "0 0 0.5rem 0", color: "#cbd5e1" }}>Active monitoring & audit engine.</p>
           <div className="sidebar-version">PHISH WATCH · ANALYST PORTAL</div>
         </div>
       </aside>
@@ -133,7 +157,7 @@ export default function App() {
         <header className="topbar">
           <div className="breadcrumbs">EthioSecure <span>/</span> Analyst Portal</div>
           <div className="topbar-right">
-            <span className="demo-pill" style={{ background: "#e6f4ea", color: "#137333" }}>● Live Database</span>
+            <span className="demo-pill" style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #86efac" }}>● Live Database</span>
             <div className="user-avatar">SA</div>
             <div className="user-label"><strong>Security Analyst</strong><small>SOC Operator</small></div>
           </div>
@@ -209,7 +233,7 @@ export default function App() {
                         <tr>
                           <th>THREAT / SOURCE</th>
                           <th>SEVERITY</th>
-                          <th>STATUS</th>
+                          <th>STATUS (TRIAGE)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -226,16 +250,23 @@ export default function App() {
                               </span>
                             </td>
                             <td>
-                              <span className={`status status-${threat.status.toLowerCase().replace(" ", "-")}`}>
-                                {threat.status}
-                              </span>
+                              <select
+                                className="status-select"
+                                value={threat.status.toLowerCase()}
+                                onChange={(e) => handleStatusChange(threat.id, e.target.value)}
+                              >
+                                <option value="new">New</option>
+                                <option value="under review">Under Review</option>
+                                <option value="blocked">Blocked</option>
+                                <option value="resolved">Resolved</option>
+                              </select>
                             </td>
                           </tr>
                         ))}
                         {visibleThreats.length === 0 && !loading && (
                           <tr>
                             <td colSpan="3" className="empty-row">
-                              No reports match your search criteria.
+                              No reports match your filter criteria.
                             </td>
                           </tr>
                         )}
@@ -250,7 +281,7 @@ export default function App() {
                     </table>
                   </div>
                   <div className="table-footnote">
-                    Live database synchronization active
+                    ● Real-time sync with PostgreSQL via Render API
                   </div>
                 </Panel>
               )}
@@ -291,9 +322,9 @@ export default function App() {
               )}
 
               <Panel title="System Diagnostics">
-                <div style={{ padding: "0.5rem 0", fontSize: "0.85rem", color: "#555" }}>
-                  <p style={{ margin: "0 0 0.5rem 0" }}><strong>API Gateway:</strong> Render Web Service</p>
-                  <p style={{ margin: "0 0 0.5rem 0" }}><strong>Database:</strong> Neon PostgreSQL (Active)</p>
+                <div style={{ fontSize: "0.88rem", color: "#334155", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <p style={{ margin: 0 }}><strong>API Gateway:</strong> Render Web Service</p>
+                  <p style={{ margin: 0 }}><strong>Database:</strong> Neon PostgreSQL (Active)</p>
                   <p style={{ margin: 0 }}><strong>Pipeline:</strong> Direct Heuristic + Risk Model</p>
                 </div>
               </Panel>
