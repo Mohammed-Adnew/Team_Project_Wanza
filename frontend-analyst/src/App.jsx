@@ -43,8 +43,31 @@ export default function App() {
   const [period, setPeriod] = useState("7 days");
   const [notice, setNotice] = useState("");
   const [compliance, setCompliance] = useState(null);
+  const [threats, setThreats] = useState([]);
+
+  const loadReports = () => {
+    fetch("/reports")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        const formatted = data.map((r) => {
+          const dateStr = r.created_at ? new Date(r.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Recent";
+          return {
+            id: r.id,
+            date: dateStr,
+            type: r.subject || "Reported Email",
+            source: r.sender_actual || r.sender_claimed || (r.link ? r.link : "Unknown source"),
+            severity: (r.severity || "Low").charAt(0).toUpperCase() + (r.severity || "Low").slice(1),
+            status: (r.status || "new").charAt(0).toUpperCase() + (r.status || "new").slice(1),
+          };
+        });
+        setThreats(formatted);
+      })
+      .catch((err) => console.error("Reports fetch error:", err));
+  };
 
   useEffect(() => {
+    loadReports();
     fetch("/compliance-status")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -65,7 +88,8 @@ export default function App() {
       .catch((err) => console.error("Compliance fetch error:", err));
   }, []);
 
-  const visibleThreats = initialThreats.filter((threat) =>
+  const currentThreatsList = threats.length > 0 ? threats : initialThreats;
+  const visibleThreats = currentThreatsList.filter((threat) =>
     `${threat.type} ${threat.source} ${threat.severity} ${threat.status}`
       .toLowerCase()
       .includes(search.toLowerCase())
@@ -150,8 +174,17 @@ export default function App() {
           <section className="metric-grid" aria-label="Security metrics">
             {metrics.map((metric) => {
               const isComp = metric.label === "Compliance readiness";
-              const displayVal = isComp && compliance ? `${compliance.score}%` : metric.value;
-              const displayNote = isComp && compliance ? `${compliance.met}/${compliance.total} obligations met` : metric.note;
+              const isThreat = metric.label === "Threats detected";
+              let displayVal = metric.value;
+              let displayNote = metric.note;
+
+              if (isComp && compliance) {
+                displayVal = `${compliance.score}%`;
+                displayNote = `${compliance.met}/${compliance.total} obligations met`;
+              } else if (isThreat && threats.length > 0) {
+                displayVal = `${threats.length}`;
+                displayNote = "Live database total";
+              }
               return (
                 <article className="metric-card" key={metric.label}>
                   <div className={`metric-icon ${metric.color}`}>{metric.icon}</div>
@@ -223,7 +256,7 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
-                <div className="table-footnote">Sample records only · No live security events</div>
+                <div className="table-footnote">{threats.length > 0 ? "Live reports synchronized with PostgreSQL" : "Sample records only · No live security events"}</div>
               </Panel>
             </div>
 
