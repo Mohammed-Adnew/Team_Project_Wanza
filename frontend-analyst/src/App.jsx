@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./styles/dashboard.css";
 
 const initialThreats = [
@@ -42,6 +42,28 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("7 days");
   const [notice, setNotice] = useState("");
+  const [compliance, setCompliance] = useState(null);
+
+  useEffect(() => {
+    fetch("/compliance-status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const total = data.statuses ? data.statuses.length : 0;
+        const met = data.statuses ? data.statuses.filter((s) => s.status === "met").length : 0;
+        const score = total > 0 ? Math.round((met / total) * 100) : 0;
+        const items = (data.obligations || []).map((ob) => {
+          const st = (data.statuses || []).find((s) => s.obligation_id === ob.id);
+          return {
+            title: ob.title,
+            isMet: st ? st.status === "met" : false,
+            detail: st ? st.detail : "",
+          };
+        });
+        setCompliance({ score, items, total, met });
+      })
+      .catch((err) => console.error("Compliance fetch error:", err));
+  }, []);
 
   const visibleThreats = initialThreats.filter((threat) =>
     `${threat.type} ${threat.source} ${threat.severity} ${threat.status}`
@@ -126,14 +148,19 @@ export default function App() {
           </div>
 
           <section className="metric-grid" aria-label="Security metrics">
-            {metrics.map((metric) => (
-              <article className="metric-card" key={metric.label}>
-                <div className={`metric-icon ${metric.color}`}>{metric.icon}</div>
-                <div className="metric-label">{metric.label}</div>
-                <div className="metric-value">{metric.value}</div>
-                <div className="metric-note">{metric.note}</div>
-              </article>
-            ))}
+            {metrics.map((metric) => {
+              const isComp = metric.label === "Compliance readiness";
+              const displayVal = isComp && compliance ? `${compliance.score}%` : metric.value;
+              const displayNote = isComp && compliance ? `${compliance.met}/${compliance.total} obligations met` : metric.note;
+              return (
+                <article className="metric-card" key={metric.label}>
+                  <div className={`metric-icon ${metric.color}`}>{metric.icon}</div>
+                  <div className="metric-label">{metric.label}</div>
+                  <div className="metric-value">{displayVal}</div>
+                  <div className="metric-note">{displayNote}</div>
+                </article>
+              );
+            })}
           </section>
 
           <div className="main-grid">
@@ -213,14 +240,31 @@ export default function App() {
                 </div>
               </Panel>
 
-              <Panel title="Compliance readiness" extra={<span className="readiness-tag">DEMO SCORE</span>}>
-                <div className="readiness-score"><strong>86<span>%</span></strong><span>Illustrative score</span></div>
-                <div className="progress-track"><div /></div>
+              <Panel title="Compliance readiness" extra={<span className="readiness-tag">{compliance ? "LIVE AUDIT" : "DEMO SCORE"}</span>}>
+                <div className="readiness-score">
+                  <strong>{compliance ? compliance.score : 86}<span>%</span></strong>
+                  <span>{compliance ? `${compliance.met}/${compliance.total} obligations met` : "Illustrative score"}</span>
+                </div>
+                <div className="progress-track">
+                  <div style={{ width: `${compliance ? compliance.score : 86}%` }} />
+                </div>
                 <div className="compliance-list">
-                  <div><span className="check">✓</span><span>Data protection</span><span className="complete">Sample</span></div>
-                  <div><span className="check">✓</span><span>Access controls</span><span className="complete">Sample</span></div>
-                  <div><span className="pending-dot" /><span>Incident response</span><span className="in-progress">Sample</span></div>
-                  <div><span className="check">✓</span><span>User awareness</span><span className="complete">Sample</span></div>
+                  {compliance && compliance.items.length > 0 ? (
+                    compliance.items.map((item, idx) => (
+                      <div key={idx} title={item.detail}>
+                        <span className={item.isMet ? "check" : "pending-dot"}>{item.isMet ? "✓" : "•"}</span>
+                        <span>{item.title}</span>
+                        <span className={item.isMet ? "complete" : "in-progress"}>{item.isMet ? "Met" : "Unmet"}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      <div><span className="check">✓</span><span>Data protection</span><span className="complete">Sample</span></div>
+                      <div><span className="check">✓</span><span>Access controls</span><span className="complete">Sample</span></div>
+                      <div><span className="pending-dot" /><span>Incident response</span><span className="in-progress">Sample</span></div>
+                      <div><span className="check">✓</span><span>User awareness</span><span className="complete">Sample</span></div>
+                    </>
+                  )}
                 </div>
               </Panel>
 
