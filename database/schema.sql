@@ -30,20 +30,9 @@ CREATE TABLE simulated_inbox (
 
 CREATE TABLE obligations (
     id SERIAL PRIMARY KEY,
-    title VARCHAR(255),
-    description TEXT,
-    status VARCHAR(50) DEFAULT 'Unmet'
-);
--- 1. Compliance Obligations Table
-CREATE TABLE IF NOT EXISTS obligations (
-    id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     severity VARCHAR(50) DEFAULT 'Medium',
+    status VARCHAR(50) DEFAULT 'Unmet',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- 2. Reports Table Updates
-ALTER TABLE reports 
-ADD COLUMN IF NOT EXISTS severity VARCHAR(50) DEFAULT 'Medium',
-ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
