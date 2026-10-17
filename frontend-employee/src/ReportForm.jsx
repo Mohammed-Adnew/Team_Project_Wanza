@@ -17,7 +17,7 @@ function ReportForm() {
   // TEMPORARY MOCK FLAG
   // Change this to false when the real backend is reachable
   // ============================================
-  const USE_MOCK = true;
+  const USE_MOCK = false;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -67,7 +67,7 @@ function ReportForm() {
 
     try {
       // Change this URL later when you have the correct backend address
-      const response = await fetch("http://10.22.194.110:5000/reports", {
+      const response = await fetch("/reports", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
