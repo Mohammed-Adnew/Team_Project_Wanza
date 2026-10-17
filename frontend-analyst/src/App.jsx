@@ -25,6 +25,7 @@ export default function App() {
   const [compliance, setCompliance] = useState(null);
   const [threats, setThreats] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const loadReports = () => {
     fetch("/reports")
@@ -81,7 +82,6 @@ export default function App() {
   };
 
   const handleStatusChange = async (reportId, newStatus) => {
-    // Optimistic UI update
     setThreats((prev) =>
       prev.map((t) => (t.id === reportId ? { ...t, status: newStatus } : t))
     );
@@ -117,11 +117,16 @@ export default function App() {
     (t) => t.status.toLowerCase() === "new" || t.status.toLowerCase() === "under review"
   ).length;
   const highRiskCount = threats.filter((t) => t.severity.toLowerCase() === "high").length;
+  const medRiskCount = threats.filter((t) => t.severity.toLowerCase() === "medium").length;
+  const lowRiskCount = threats.filter((t) => t.severity.toLowerCase() === "low").length;
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard ${menuOpen ? "nav-open" : ""}`}>
+      {/* Mobile Backdrop */}
+      {menuOpen && <div className="backdrop" onClick={() => setMenuOpen(false)} />}
+
       <aside className="sidebar">
-        <a className="brand" href="#overview" onClick={() => setActive("Overview")}>
+        <a className="brand" href="#overview" onClick={() => { setActive("Overview"); setMenuOpen(false); }}>
           <span className="brand-symbol">E</span>
           <span className="brand-copy">
             <strong>EthioSecure</strong>
@@ -135,7 +140,7 @@ export default function App() {
             <button
               key={item.label}
               className={`nav-link ${active === item.label ? "selected" : ""}`}
-              onClick={() => setActive(item.label)}
+              onClick={() => { setActive(item.label); setMenuOpen(false); }}
             >
               <span className="nav-icon">{item.icon}</span>
               <span>{item.label}</span>
@@ -148,16 +153,21 @@ export default function App() {
 
         <div className="sidebar-bottom">
           <div className="status-indicator"><span /> SOC CONNECTED</div>
-          <p style={{ margin: "0 0 0.5rem 0", color: "#cbd5e1" }}>Active monitoring & audit engine.</p>
+          <p className="sidebar-note">Active threat monitoring & audit engine.</p>
           <div className="sidebar-version">PHISH WATCH · ANALYST PORTAL</div>
         </div>
       </aside>
 
       <main className="main-area" id="overview">
         <header className="topbar">
-          <div className="breadcrumbs">EthioSecure <span>/</span> Analyst Portal</div>
+          <div className="topbar-left">
+            <button className="mobile-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle Navigation">
+              ☰
+            </button>
+            <div className="breadcrumbs">EthioSecure <span>/</span> Analyst Portal</div>
+          </div>
           <div className="topbar-right">
-            <span className="demo-pill" style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #86efac" }}>● Live Database</span>
+            <span className="demo-pill">● Live Database</span>
             <div className="user-avatar">SA</div>
             <div className="user-label"><strong>Security Analyst</strong><small>SOC Operator</small></div>
           </div>
@@ -175,7 +185,7 @@ export default function App() {
             </button>
           </section>
 
-          {/* Live Metrics Grid */}
+          {/* Metric Grid */}
           <section className="metric-grid" aria-label="Security metrics">
             <article className="metric-card">
               <div className="metric-icon blue">⌕</div>
@@ -205,6 +215,52 @@ export default function App() {
               <div className="metric-note">{compliance ? `${compliance.met}/${compliance.total} obligations met` : "Auditing..."}</div>
             </article>
           </section>
+
+          {/* Dynamic Visual Activity Chart */}
+          {(active === "Overview" || active === "Phishing Analysis") && (
+            <Panel
+              title="Threat Telemetry & Severity Distribution"
+              extra={<span className="table-count">{threats.length} total events</span>}
+            >
+              <div className="chart-container">
+                <div className="chart-legend">
+                  <span><i className="legend-red" /> High ({highRiskCount})</span>
+                  <span><i className="legend-amber" /> Medium ({medRiskCount})</span>
+                  <span><i className="legend-green" /> Low ({lowRiskCount})</span>
+                </div>
+                
+                {/* Visual SVG Wave graph reflecting the active threat levels */}
+                <div className="chart-wrapper">
+                  <svg viewBox="0 0 700 140" preserveAspectRatio="none" className="telemetry-svg">
+                    <defs>
+                      <linearGradient id="cyberGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2563eb" stopOpacity="0.4" />
+                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <polygon
+                      points={`0,120 100,${110 - lowRiskCount * 12} 250,${100 - medRiskCount * 15} 420,${90 - highRiskCount * 22} 550,${95 - threats.length * 8} 700,105 700,140 0,140`}
+                      fill="url(#cyberGradient)"
+                    />
+                    <polyline
+                      points={`0,120 100,${110 - lowRiskCount * 12} 250,${100 - medRiskCount * 15} 420,${90 - highRiskCount * 22} 550,${95 - threats.length * 8} 700,105`}
+                      fill="none"
+                      stroke="#2563eb"
+                      strokeWidth="3"
+                    />
+                  </svg>
+                  <div className="chart-x-labels">
+                    <span>Baseline</span>
+                    <span>Low Risk</span>
+                    <span>Medium Risk</span>
+                    <span>High Risk</span>
+                    <span>Active Queue</span>
+                    <span>Normalized</span>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          )}
 
           <div className="main-grid">
             <div className="column">
@@ -322,10 +378,10 @@ export default function App() {
               )}
 
               <Panel title="System Diagnostics">
-                <div style={{ fontSize: "0.88rem", color: "#334155", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <p style={{ margin: 0 }}><strong>API Gateway:</strong> Render Web Service</p>
-                  <p style={{ margin: 0 }}><strong>Database:</strong> Neon PostgreSQL (Active)</p>
-                  <p style={{ margin: 0 }}><strong>Pipeline:</strong> Direct Heuristic + Risk Model</p>
+                <div className="diagnostics-box">
+                  <p><strong>API Gateway:</strong> Render Web Service</p>
+                  <p><strong>Database:</strong> Neon PostgreSQL (Active)</p>
+                  <p><strong>Pipeline:</strong> Direct Heuristic + Risk Model</p>
                 </div>
               </Panel>
             </div>

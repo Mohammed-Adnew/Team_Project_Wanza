@@ -27,6 +27,7 @@ body {
 .dashboard {
   display: flex;
   min-height: 100vh;
+  position: relative;
 }
 
 /* Sidebar */
@@ -38,6 +39,8 @@ body {
   flex-direction: column;
   padding: 1.5rem 1rem;
   flex-shrink: 0;
+  transition: transform 0.25s ease-in-out;
+  z-index: 100;
 }
 
 .brand {
@@ -153,10 +156,16 @@ body {
   box-shadow: 0 0 8px #38bdf8;
 }
 
-.sidebar-version {
-  margin-top: 0.75rem;
-  font-size: 0.75rem;
+.sidebar-note {
+  margin: 0 0 0.5rem 0;
   color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.sidebar-version {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 /* Main Area */
@@ -174,6 +183,23 @@ body {
   padding: 1.1rem 2rem;
   background: var(--bg-surface);
   border-bottom: 2px solid var(--border-color);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mobile-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 1.25rem;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  color: var(--text-main);
 }
 
 .breadcrumbs {
@@ -198,6 +224,9 @@ body {
   font-weight: 700;
   padding: 0.35rem 0.85rem;
   border-radius: 20px;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1.5px solid #86efac;
 }
 
 .user-avatar {
@@ -211,7 +240,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 0.9rem;
-  border: 1px solid var(--border-color);
+  border: 1.5px solid var(--border-color);
 }
 
 .user-label strong {
@@ -232,13 +261,14 @@ body {
   padding: 2rem;
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
+  gap: 1.5rem;
 }
 
 .page-intro {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  gap: 1rem;
 }
 
 .eyebrow {
@@ -275,11 +305,11 @@ body {
   color: #0f172a;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .outline-button:hover {
   background: #e2e8f0;
-  border-color: #94a3b8;
 }
 
 /* Metrics Grid */
@@ -294,7 +324,7 @@ body {
   border: 1.5px solid var(--border-color);
   border-radius: 10px;
   padding: 1.35rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .metric-icon {
@@ -327,6 +357,63 @@ body {
   font-size: 0.85rem;
   color: #475569;
   font-weight: 600;
+}
+
+/* Telemetry Wave Chart */
+.chart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chart-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-red { background: #dc2626; }
+.legend-amber { background: #d97706; }
+.legend-green { background: #16a34a; }
+
+.chart-wrapper {
+  background: #ffffff;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.telemetry-svg {
+  width: 100%;
+  height: 110px;
+  display: block;
+}
+
+.chart-x-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.5rem;
 }
 
 /* Main Grid */
@@ -428,6 +515,7 @@ body {
 /* Table */
 .table-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -607,6 +695,18 @@ td {
   font-weight: 800;
 }
 
+.diagnostics-box {
+  font-size: 0.88rem;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.diagnostics-box p {
+  margin: 0;
+}
+
 .footer {
   margin-top: auto;
   display: flex;
@@ -617,4 +717,90 @@ td {
   color: #475569;
   border-top: 2px solid var(--border-color);
   background: var(--bg-surface);
+}
+
+/* ========================================================
+   RESPONSIVE DESIGN (TABLETS & MOBILE SCREENS)
+   ======================================================== */
+@media (max-width: 900px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .mobile-toggle {
+    display: inline-block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .nav-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    z-index: 99;
+  }
+
+  .topbar {
+    padding: 0.85rem 1rem;
+  }
+
+  .user-label, .breadcrumbs {
+    display: none;
+  }
+
+  .content {
+    padding: 1rem;
+    gap: 1.2rem;
+  }
+
+  .page-intro {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-intro h1 {
+    font-size: 1.6rem;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .metric-card {
+    padding: 1rem;
+  }
+
+  .metric-value {
+    font-size: 1.75rem;
+  }
+
+  .footer {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
 }
