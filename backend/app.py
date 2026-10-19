@@ -14,6 +14,7 @@ from detection.combiner import combine_results
 from detection.text_check import extract_domain_from_email, split_sender
 from compliance.obligations import COMPLIANCE_OBLIGATIONS, evaluate_compliance_status
 from compliance.readiness_routes import register_readiness_routes
+from routes.inbound_email_routes import register_inbound_email_routes
 
 if not Config.DATABASE_URL.strip():
     raise RuntimeError("DATABASE_URL is required; configure it in the backend environment before starting the API")
@@ -348,6 +349,7 @@ def create_app():
         })
 
     register_readiness_routes(app, SessionLocal, engine, Report, report_to_dict)
+    register_inbound_email_routes(app, SessionLocal, engine, Report, make_report)
 
     return app
 
