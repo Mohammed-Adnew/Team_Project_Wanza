@@ -6,6 +6,7 @@ from flask_cors import CORS
 from sqlalchemy import MetaData, Table, create_engine, inspect, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
+from werkzeug.exceptions import HTTPException
 
 from config import Config
 from models import Report
@@ -13,6 +14,9 @@ from detection.combiner import combine_results
 from detection.text_check import extract_domain_from_email, split_sender
 from compliance.obligations import COMPLIANCE_OBLIGATIONS, evaluate_compliance_status
 from compliance.readiness_routes import register_readiness_routes
+
+if not Config.DATABASE_URL.strip():
+    raise RuntimeError("DATABASE_URL is required; configure it in the backend environment before starting the API")
 
 engine = create_engine(Config.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
@@ -54,6 +58,14 @@ def make_report(*, sender_claimed, sender_actual, subject, body, link,
 
 def report_to_dict(report):
     """Turns a Report row into a JSON-friendly dict (reasons is stored as JSON text)."""
+    try:
+        reasons = json.loads(report.reasons) if report.reasons else []
+    except (TypeError, ValueError):
+        # Keep a malformed legacy value visible instead of failing every report read.
+        reasons = [report.reasons] if report.reasons else []
+    if not isinstance(reasons, list):
+        reasons = [reasons]
+
     return {
         "id": report.id,
         "sender_claimed": report.sender_claimed,
@@ -65,7 +77,7 @@ def report_to_dict(report):
         "risk_score": report.risk_score,
         "verdict": report.verdict,
         "severity": report.severity,
-        "reasons": json.loads(report.reasons) if report.reasons else [],
+        "reasons": reasons,
         "source": report.source,
         "status": report.status,
         "notes": report.notes,
@@ -77,20 +89,31 @@ def report_to_dict(report):
 def create_app():
     app = Flask(__name__)
     CORS(app)  # lets the frontend (running on a different port) call this API
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
     # This app NEVER creates or changes tables - the Database role owns the schema.
     # It only checks that the table exists and warns clearly if it doesn't.
     try:
         if not inspect(engine).has_table("reports"):
-            print("WARNING: the 'reports' table does not exist in the database yet. "
-                  "Ask the Database owner to create it. /reports endpoints will fail until then.")
+            app.logger.warning(
+                "The 'reports' table is missing; /reports endpoints will be unavailable until it is created."
+            )
     except SQLAlchemyError as exc:
-        print(f"WARNING: could not check the database: {exc.__class__.__name__}")
+        app.logger.warning("Could not check database tables (%s)", exc.__class__.__name__)
 
     @app.errorhandler(SQLAlchemyError)
     def handle_db_error(exc):
-        app.logger.error("Database error: %s", exc)
-        return jsonify({"error": "database error - check that the tables exist and match models.py"}), 500
+        app.logger.error("Database operation failed (%s)", exc.__class__.__name__)
+        return jsonify({"error": "database operation failed; check the database connection and schema"}), 500
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(exc):
+        return jsonify({"error": exc.description}), exc.code
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(exc):
+        app.logger.exception("Unhandled API error")
+        return jsonify({"error": "internal server error"}), 500
 
     @app.route("/")
     def home():
@@ -102,12 +125,35 @@ def create_app():
 
     @app.route("/reports", methods=["POST"])
     def submit_report():
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "a JSON object is required"}), 400
 
         subject = data.get("subject", "")
         body = data.get("message_body") or data.get("body") or ""
-        if not (subject or body):
+        if not isinstance(subject, str) or not isinstance(body, str):
+            return jsonify({"error": "subject and message_body must be text"}), 400
+        if not (subject.strip() or body.strip()):
             return jsonify({"error": "subject or message_body is required"}), 400
+        if len(subject) > 255:
+            return jsonify({"error": "subject must be 255 characters or fewer"}), 400
+
+        text_limits = {
+            "sender_claimed": 255,
+            "sender_actual": 255,
+            "sender_domain": 255,
+            "claimed_org": 255,
+            "attachment_filename": 255,
+            "source": 100,
+        }
+        for field, max_length in text_limits.items():
+            value = data.get(field)
+            if value is not None and not isinstance(value, str):
+                return jsonify({"error": f"{field} must be text"}), 400
+            if isinstance(value, str) and len(value) > max_length:
+                return jsonify({"error": f"{field} must be {max_length} characters or fewer"}), 400
+        if data.get("link") is not None and not isinstance(data["link"], str):
+            return jsonify({"error": "link must be text"}), 400
 
         sender_claimed = data.get("sender_claimed") or data.get("claimed_org") or ""
         sender_actual = data.get("sender_actual") or data.get("sender") or ""
@@ -257,7 +303,22 @@ def create_app():
 
     @app.route("/reports/<int:report_id>", methods=["PATCH"])
     def update_report(report_id):
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "a JSON object is required"}), 400
+        if not data:
+            return jsonify({"error": "at least one field is required"}), 400
+        unknown_fields = set(data) - {"status", "notes"}
+        if unknown_fields:
+            return jsonify({"error": f"unsupported field(s): {', '.join(sorted(unknown_fields))}"}), 400
+        if "status" in data and (
+            not isinstance(data["status"], str) or data["status"] not in ALLOWED_STATUSES
+        ):
+            return jsonify({"error": "status must be new, investigating, or resolved"}), 400
+        if "notes" in data and data["notes"] is not None and not isinstance(data["notes"], str):
+            return jsonify({"error": "notes must be text or null"}), 400
+        if isinstance(data.get("notes"), str) and len(data["notes"]) > 10000:
+            return jsonify({"error": "notes must be 10000 characters or fewer"}), 400
 
         with SessionLocal() as session:
             report = session.get(Report, report_id)
@@ -265,8 +326,6 @@ def create_app():
                 return jsonify({"error": "report not found"}), 404
 
             if "status" in data:
-                if data["status"] not in ALLOWED_STATUSES:
-                    return jsonify({"error": "status must be new, investigating, or resolved"}), 400
                 report.status = data["status"]
                 # Compliance (48-hour notification) needs to know when a report was closed
                 if data["status"] == "resolved" and report.resolved_at is None:
@@ -295,4 +354,4 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(host="0.0.0.0",debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=False, port=5000)
