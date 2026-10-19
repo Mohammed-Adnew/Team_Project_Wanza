@@ -17,7 +17,8 @@ CREATE TABLE reports (
     reasons TEXT,
     source VARCHAR(100),
     notes TEXT,
-    resolved_at TIMESTAMP
+    resolved_at TIMESTAMP,
+    provider_email_id VARCHAR(255) UNIQUE
 );
 
 CREATE TABLE simulated_inbox (
@@ -34,6 +35,7 @@ CREATE TABLE obligations (
     description TEXT,
     status VARCHAR(50) DEFAULT 'Unmet'
 );
+
 CREATE TABLE IF NOT EXISTS compliance_assessments (
     duty_id VARCHAR(255) PRIMARY KEY,
     status VARCHAR(50) CHECK (status IN ('fulfilled', 'in_progress', 'not_fulfilled')),
@@ -42,4 +44,3 @@ CREATE TABLE IF NOT EXISTS compliance_assessments (
     target_date DATE,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
