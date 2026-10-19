@@ -45,7 +45,7 @@ def _to_naive_utc(value):
     """Turns an ISO timestamp string or a datetime into a naive UTC datetime. None if missing or invalid."""
     if isinstance(value, str):
         try:
-            value = datetime.fromisoformat(value)
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
     if not isinstance(value, datetime):
