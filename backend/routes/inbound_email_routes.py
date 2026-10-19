@@ -1,5 +1,6 @@
 """Receive and analyze inbound emails delivered by Resend webhooks."""
 
+import json
 from html.parser import HTMLParser
 from urllib.parse import quote
 
@@ -66,7 +67,8 @@ def register_inbound_email_routes(app, SessionLocal, engine, Report, make_report
 
         raw_body = request.get_data(cache=True, as_text=True)
         try:
-            event = Webhook(webhook_secret).verify(raw_body, request.headers)
+            Webhook(webhook_secret).verify(raw_body, request.headers)
+            event = json.loads(raw_body)
         except (WebhookVerificationError, ValueError, TypeError):
             return jsonify({"error": "invalid webhook signature or payload"}), 400
 
