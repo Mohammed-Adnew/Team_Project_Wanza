@@ -34,3 +34,12 @@ CREATE TABLE obligations (
     description TEXT,
     status VARCHAR(50) DEFAULT 'Unmet'
 );
+CREATE TABLE IF NOT EXISTS compliance_assessments (
+    duty_id VARCHAR(255) PRIMARY KEY,
+    status VARCHAR(50) CHECK (status IN ('fulfilled', 'in_progress', 'not_fulfilled')),
+    evidence_note TEXT,
+    responsible VARCHAR(255),
+    target_date DATE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
