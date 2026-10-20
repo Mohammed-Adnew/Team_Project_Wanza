@@ -13,11 +13,13 @@ from detection.text_check import check_text
 from detection.scam_signals import check_scam_signals
 from detection.link_check import check_link
 from detection.attachment_check import check_attachment
+from config import Config
 
 
 def combine_results(subject, body, sender_domain="", claimed_org="",
                     attachment_filename=None, attachment_bytes=b"",
-                    sender_display_name="", sender_email=""):
+                    sender_display_name="", sender_email="", authentication_results="",
+                    allow_virustotal_upload=False):
     """
     Runs all applicable detection checks and merges them into one result.
 
@@ -41,35 +43,56 @@ def combine_results(subject, body, sender_domain="", claimed_org="",
     scam_result = check_scam_signals(subject, body, sender_domain, claimed_org)
     total_score += scam_result["risk_score"]
 
-    link_result = check_link(body)
+    link_result = check_link(f"{subject}\n{body}")
     total_score += link_result["risk_score"]
-    if link_result["risk_score"] >= 40:  # a confirmed VirusTotal/Safe Browsing match
+    has_sender_domain_signal = any(reason.startswith("Sender domain") for reason in scam_result["reasons"])
+    has_credential_request = any(reason.startswith("Asks for credentials") for reason in scam_result["reasons"])
+    if link_result.get("confirmed_threat") or (has_sender_domain_signal and has_credential_request):
         force_risky = True
 
-    attachment_result = None
+    attachment_results = []
     if attachment_filename:
-        attachment_result = check_attachment(attachment_filename, attachment_bytes)
-        total_score += attachment_result["risk_score"]
-        if attachment_result["risk_score"] >= 25:
-            force_risky = True
+        filenames = attachment_filename if isinstance(attachment_filename, (list, tuple)) else [attachment_filename]
+        for filename in filenames:
+            file_bytes = attachment_bytes if len(filenames) == 1 else b""
+            attachment_result = check_attachment(
+                filename, file_bytes,
+                allow_virustotal_upload=allow_virustotal_upload,
+            )
+            attachment_results.append(attachment_result)
+            total_score += attachment_result["risk_score"]
+            if attachment_result["risk_score"] >= 25:
+                force_risky = True
 
     # If another check found a problem, drop text_check's "No obvious ..." / "No known ..." lines so the
     # reasons never say both "nothing found" and "this looks suspicious".
     other_risk = (
         scam_result["risk_score"] > 0
         or link_result["risk_score"] > 0
-        or (attachment_result is not None and attachment_result["risk_score"] > 0)
+        or any(result["risk_score"] > 0 for result in attachment_results)
     )
     text_reasons = text_result["reasons"]
     if other_risk:
         text_reasons = [r for r in text_reasons if not r.startswith(("No obvious", "No known"))]
 
-    all_reasons = list(text_reasons) + scam_result["reasons"] + link_result["reasons"]
-    if attachment_result is not None:
+    all_reasons = ["Coverage: text, sender-domain, and local scam heuristics ran; these rule-based checks do not authenticate a sender."] + list(text_reasons) + scam_result["reasons"] + link_result["reasons"]
+    if link_result["checked_urls"]:
+        if not Config.SAFE_BROWSING_API_KEY:
+            all_reasons.append("Coverage: URL heuristics ran; Google Safe Browsing was skipped because no API key is configured.")
+        else:
+            all_reasons.append("Coverage: URL heuristics and Google Safe Browsing lookup ran for extracted links; no match or lookup failure does not prove safety.")
+    if not attachment_filename:
+        all_reasons.append("Coverage: attachment check not applicable; no attachment was provided.")
+    if authentication_results:
+        from detection.sender_auth import summarize_authentication_results
+        all_reasons.extend(summarize_authentication_results(authentication_results))
+    else:
+        all_reasons.append("Coverage: sender SPF/DKIM/DMARC results were not provided; sender-domain heuristics are not authentication proof.")
+    for attachment_result in attachment_results:
         all_reasons += attachment_result["reasons"]
 
     total_score = min(total_score, 100)
-    verdict = "risky" if (total_score >= 50 or force_risky) else "safe"
+    verdict = "risky" if (total_score >= 45 or force_risky) else "safe"
 
     if total_score >= 75:
         severity = "high"

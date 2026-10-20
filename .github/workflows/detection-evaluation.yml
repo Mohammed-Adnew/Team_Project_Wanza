@@ -1,0 +1,35 @@
+name: Detection evaluation
+
+on:
+  push:
+    paths:
+      - "backend/detection/**"
+      - "backend/tests/**"
+      - "backend/routes/**"
+      - "backend/app.py"
+      - "backend/config.py"
+      - "backend/requirements.txt"
+      - "database/seed_data.sql"
+      - ".github/workflows/detection-evaluation.yml"
+  pull_request:
+    paths:
+      - "backend/detection/**"
+      - "backend/tests/**"
+      - "backend/routes/**"
+      - "backend/app.py"
+      - "backend/config.py"
+      - "backend/requirements.txt"
+      - "database/seed_data.sql"
+      - ".github/workflows/detection-evaluation.yml"
+
+jobs:
+  detection-evaluation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r backend/requirements.txt
+      - run: python backend/tests/test_detection_evaluation.py
+      - run: python backend/tests/test_detection_safety.py

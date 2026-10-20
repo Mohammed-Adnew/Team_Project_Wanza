@@ -5,6 +5,8 @@ attachments - that's the job of link_check.py and attachment_check.py.
 """
 
 import re
+from email.utils import parseaddr
+from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
 # English phrases
@@ -196,16 +198,29 @@ def mentions_org(text: str, org_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def normalize_domain(domain: str) -> str:
-    """Normalize a sender domain before comparison."""
-    if not domain:
+    """Normalize a hostname safely, excluding scheme, credentials, port and path."""
+    if not isinstance(domain, str) or not domain.strip():
         return ""
-    domain = domain.lower().strip()
-    if "://" in domain:
-        domain = domain.split("://", 1)[1]
-    domain = domain.split("/")[0].split(":")[0]
-    if domain.startswith("www."):
-        domain = domain[4:]
-    return domain
+    value = domain.strip()
+    try:
+        if "://" in value:
+            value = urlsplit(value).hostname or ""
+        elif "@" in value:
+            value = value.rsplit("@", 1)[-1]
+            value = urlsplit("//" + value).hostname or ""
+        elif "/" in value or ":" in value:
+            value = urlsplit("//" + value).hostname or ""
+        value = value.rstrip(".").lower()
+        if value.startswith("www."):
+            value = value[4:]
+        value = value.encode("idna").decode("ascii")
+        if not value or any(not label or len(label) > 63 for label in value.split(".")):
+            return ""
+        if any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label) for label in value.split(".")):
+            return ""
+        return value
+    except (ValueError, UnicodeError):
+        return ""
 
 
 def domain_is_or_under(domain: str, parent: str) -> bool:
@@ -224,10 +239,16 @@ def domain_matches_org(sender_domain: str, claimed_org: str) -> bool:
 
 
 def extract_domain_from_email(email_address: str) -> str:
-    """Pulls the domain out of a full email address, e.g. 'alerts@combanketh.et' -> 'combanketh.et'."""
-    if not email_address or "@" not in email_address:
+    """Extract and normalize the hostname from a mailbox or display-name address."""
+    if not isinstance(email_address, str) or "@" not in email_address:
         return ""
-    return normalize_domain(email_address.rsplit("@", 1)[-1].strip(" >"))
+    _display, address = parseaddr(email_address)
+    if not address or address.count("@") != 1:
+        return ""
+    local_part, _, domain = address.rpartition("@")
+    if not local_part or not domain:
+        return ""
+    return normalize_domain(domain)
 
 
 _SENDER_WITH_NAME = re.compile(r'^\s*"?([^"<]*?)"?\s*<([^>]*)>\s*$')
