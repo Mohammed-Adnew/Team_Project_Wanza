@@ -12,6 +12,7 @@ from models import Report
 from detection.combiner import combine_results
 from detection.text_check import extract_domain_from_email, split_sender
 from compliance.obligations import COMPLIANCE_OBLIGATIONS, evaluate_compliance_status
+from routes.inbound_email_routes import register_inbound_email_routes
 
 engine = create_engine(Config.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
@@ -287,6 +288,8 @@ def create_app():
             "obligations": COMPLIANCE_OBLIGATIONS,
             "statuses": evaluate_compliance_status(reports),
         })
+
+    register_inbound_email_routes(app, SessionLocal, engine, Report, make_report)
 
     return app
 
