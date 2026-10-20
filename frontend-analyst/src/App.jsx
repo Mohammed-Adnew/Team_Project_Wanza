@@ -48,12 +48,15 @@ export default function App() {
             type: r.subject || "Reported Phish",
             sender: r.sender_actual || r.sender_claimed || "Unknown sender",
             claimedSender: r.sender_claimed || "None",
-            source: r.link || "No embedded URL",
-            body: r.body || "No raw body captured",
+            source: r.link || r.attachment_filename || "No embedded URL or attachment",
+            link: r.link || "",
+            body: r.message_body || "No message body captured",
             severity: (r.severity || "Low").charAt(0).toUpperCase() + (r.severity || "Low").slice(1),
             status: (r.status || "new").toLowerCase(),
             score: r.risk_score ?? 0,
-            indicators: r.indicators || [],
+            reasons: Array.isArray(r.reasons) ? r.reasons : [],
+            attachmentFilename: r.attachment_filename || "",
+            reportSource: r.source || "unknown",
           };
         });
         setThreats(formatted);
@@ -113,7 +116,7 @@ export default function App() {
   }, []);
 
   const visibleThreats = threats.filter((threat) =>
-    `${threat.type} ${threat.sender} ${threat.source} ${threat.severity} ${threat.status}`
+    `${threat.type} ${threat.sender} ${threat.source} ${threat.severity} ${threat.status} ${threat.reasons.join(" ")}`
       .toLowerCase()
       .includes(search.toLowerCase())
   );
@@ -128,8 +131,8 @@ export default function App() {
   const lowPct = Math.round((lowRiskCount / totalReports) * 100);
 
   const statusNew = threats.filter((t) => t.status === "new").length;
-  const statusReview = threats.filter((t) => t.status === "under review").length;
-  const statusMitigated = threats.filter((t) => t.status === "blocked" || t.status === "resolved").length;
+  const statusReview = threats.filter((t) => t.status === "investigating").length;
+  const statusMitigated = threats.filter((t) => t.status === "resolved").length;
 
   return (
     <div className={`dashboard ${menuOpen ? "nav-open" : ""}`}>
@@ -272,7 +275,7 @@ export default function App() {
                       <div className="step-card">
                         <span className="step-label">In Progress</span>
                         <strong className="step-num text-blue">{statusReview}</strong>
-                        <span className="step-tag">Under Review</span>
+                        <span className="step-tag">Investigating</span>
                       </div>
                       <div className="pipeline-arrow">→</div>
                       <div className="step-card">
@@ -351,7 +354,7 @@ export default function App() {
                     <thead>
                       <tr>
                         <th>THREAT DETAILS</th>
-                        <th>EMBEDDED URL / LINK</th>
+                        <th>LINK / ATTACHMENT</th>
                         <th>SEVERITY</th>
                         <th>RISK SCORE</th>
                         <th>TRIAGE ACTION</th>
@@ -384,8 +387,7 @@ export default function App() {
                               onChange={(e) => handleStatusChange(threat.id, e.target.value)}
                             >
                               <option value="new">New</option>
-                              <option value="under review">Under Review</option>
-                              <option value="blocked">Blocked</option>
+                              <option value="investigating">Investigating</option>
                               <option value="resolved">Resolved</option>
                             </select>
                           </td>
@@ -426,9 +428,19 @@ export default function App() {
                         <p>{selectedThreat.claimedSender} &rarr; <code>{selectedThreat.sender}</code></p>
                       </div>
                       <div className="modal-field">
-                        <label>Suspicious Link:</label>
-                        <p><code className="code-pill">{selectedThreat.source}</code></p>
+                        <label>Report source:</label>
+                        <p>{selectedThreat.reportSource}</p>
                       </div>
+                      <div className="modal-field">
+                        <label>Suspicious Link:</label>
+                        <p><code className="code-pill">{selectedThreat.link || "No separate link field recorded; check the message body and detection reasons."}</code></p>
+                      </div>
+                      {selectedThreat.attachmentFilename && (
+                        <div className="modal-field">
+                          <label>Attachment:</label>
+                          <p>{selectedThreat.attachmentFilename}</p>
+                        </div>
+                      )}
                       <div className="modal-field">
                         <label>Risk Score & Severity:</label>
                         <p><span className={`severity ${selectedThreat.severity.toLowerCase()}`}>{selectedThreat.severity}</span> ({selectedThreat.score} / 100)</p>
@@ -436,6 +448,18 @@ export default function App() {
                       <div className="modal-field">
                         <label>Raw Payload Content:</label>
                         <pre className="raw-box">{selectedThreat.body}</pre>
+                      </div>
+                      <div className="modal-field">
+                        <label>Detection reasons and coverage:</label>
+                        {selectedThreat.reasons.length > 0 ? (
+                          <ul className="reason-list">
+                            {selectedThreat.reasons.map((reason, index) => (
+                              <li key={`${index}-${reason}`}>{reason}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>No detection reasons were returned for this report.</p>
+                        )}
                       </div>
                     </div>
                   </div>
