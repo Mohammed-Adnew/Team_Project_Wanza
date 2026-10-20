@@ -1,8 +1,7 @@
 """
-Measures detection accuracy on the emails in database/seed_data.sql, without a database.
-Run from the backend folder:   python tests/test_seed_inbox.py
-Only the local checks run: VirusTotal and Safe Browsing are switched off, so results are
-repeatable and no request leaves your computer.
+Diagnostic evaluation on the seed emails, without a database. Prints false positives and missed phishing.
+The larger threshold-gated regression set is backend/tests/test_detection_evaluation.py.
+Only local checks run; no requests leave the computer.
 """
 
 import re
@@ -30,7 +29,10 @@ def main():
         return 1
 
     correct = 0
-    problems = []
+    true_positives = 0
+    true_negatives = 0
+    false_positives = []
+    missed_phishing = []
     print("row  label    score  verdict  result  sender")
     for i, (sender, subject, body, label) in enumerate(rows, 1):
         is_phishing = label == "TRUE"
@@ -40,16 +42,26 @@ def main():
         )
         ok = (result["verdict"] == "risky") == is_phishing
         correct += ok
+        predicted_phishing = result["verdict"] == "risky"
+        if is_phishing and predicted_phishing:
+            true_positives += 1
+        elif not is_phishing and not predicted_phishing:
+            true_negatives += 1
         if not ok:
-            problems.append((i, sender, is_phishing, result))
+            item = (i, sender, result)
+            (missed_phishing if is_phishing else false_positives).append(item)
         print(f"{i:>3}  {'phish ' if is_phishing else 'normal'}  {result['score']:>4}   {result['verdict']:<7}  {'ok' if ok else 'WRONG':<6}  {sender}")
 
-    print(f"\nCorrect: {correct}/{len(rows)}")
-    for i, sender, is_phishing, result in problems:
-        kind = "missed phishing" if is_phishing else "false alarm"
-        print(f"\nRow {i} ({kind}): {sender}")
-        for reason in result["reasons"]:
-            print("   -", reason)
+    precision = true_positives / max(1, true_positives + len(false_positives))
+    recall = true_positives / max(1, true_positives + len(missed_phishing))
+    print(f"\nCorrect: {correct}/{len(rows)} | false positives: {len(false_positives)} | missed phishing: {len(missed_phishing)}")
+    print(f"Precision: {precision:.1%} | Recall: {recall:.1%}")
+    for heading, cases in (("False positives", false_positives), ("Missed phishing", missed_phishing)):
+        print(f"\n{heading}:")
+        for i, sender, result in cases:
+            print(f"Row {i}: {sender} (score {result['score']})")
+            for reason in result["reasons"]:
+                print("   -", reason)
     return 0
 
 

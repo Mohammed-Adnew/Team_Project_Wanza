@@ -3,6 +3,8 @@ from datetime import datetime
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.utils import secure_filename
 from sqlalchemy import MetaData, Table, create_engine, inspect, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
@@ -76,6 +78,7 @@ def report_to_dict(report):
 
 def create_app():
     app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = Config.MAX_ATTACHMENT_BYTES + (1024 * 1024)
     CORS(app)  # lets the frontend (running on a different port) call this API
 
     # This app NEVER creates or changes tables - the Database role owns the schema.
@@ -92,6 +95,10 @@ def create_app():
         app.logger.error("Database error: %s", exc)
         return jsonify({"error": "database error - check that the tables exist and match models.py"}), 500
 
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_large_request(_exc):
+        return jsonify({"error": "request is too large; attachments are limited to 10 MB"}), 413
+
     @app.route("/")
     def home():
         return jsonify({"message": "Phish Watch backend is running!"})
@@ -102,22 +109,54 @@ def create_app():
 
     @app.route("/reports", methods=["POST"])
     def submit_report():
-        data = request.get_json(silent=True) or {}
+        data = request.form.to_dict() if request.mimetype == "multipart/form-data" else (request.get_json(silent=True) or {})
+        if not isinstance(data, dict):
+            return jsonify({"error": "request body must be a JSON object or multipart form"}), 400
+        uploaded_file = request.files.get("attachment")
 
         subject = data.get("subject", "")
         body = data.get("message_body") or data.get("body") or ""
-        if not (subject or body):
-            return jsonify({"error": "subject or message_body is required"}), 400
+        if not isinstance(subject, str) or not isinstance(body, str):
+            return jsonify({"error": "subject and message_body must be text"}), 400
+        if not (subject.strip() or body.strip() or uploaded_file):
+            return jsonify({"error": "subject, message_body, or attachment is required"}), 400
 
         sender_claimed = data.get("sender_claimed") or data.get("claimed_org") or ""
         sender_actual = data.get("sender_actual") or data.get("sender") or ""
         link = data.get("link") or None
         attachment_filename = data.get("attachment_filename")
+        if attachment_filename is not None and not isinstance(attachment_filename, str):
+            return jsonify({"error": "attachment_filename must be text"}), 400
+        if not isinstance(data.get("sender_claimed", data.get("claimed_org", "")), str):
+            return jsonify({"error": "sender_claimed must be text"}), 400
+        if not isinstance(data.get("sender_actual", data.get("sender", "")), str):
+            return jsonify({"error": "sender_actual must be text"}), 400
+        if link is not None and not isinstance(link, str):
+            return jsonify({"error": "link must be text"}), 400
+        attachment_bytes = b""
+        if uploaded_file is not None:
+            attachment_filename = secure_filename(uploaded_file.filename or "")[:255]
+            if not attachment_filename:
+                return jsonify({"error": "uploaded attachment must have a valid filename"}), 400
+            attachment_bytes = uploaded_file.read(Config.MAX_ATTACHMENT_BYTES + 1)
+            if len(attachment_bytes) > Config.MAX_ATTACHMENT_BYTES:
+                return jsonify({"error": "attachment exceeds the 10 MB upload limit"}), 413
+            if not attachment_bytes:
+                return jsonify({"error": "uploaded attachment is empty"}), 400
+        consent_value = data.get("share_with_virustotal", False)
+        share_with_virustotal = consent_value is True or (
+            isinstance(consent_value, str) and consent_value.strip().lower() in {"true", "1", "yes", "on"}
+        )
+        authentication_results = data.get("authentication_results", "")
+        if not isinstance(authentication_results, str):
+            return jsonify({"error": "authentication_results must be text"}), 400
 
         # The sending domain comes from the real address, the claimed organization
         # from the "claims to be from" field.
-        sender_domain = data.get("sender_domain") or extract_domain_from_email(sender_actual)
+        sender_domain = extract_domain_from_email(sender_actual)
         claimed_org = data.get("claimed_org") or sender_claimed
+        if not isinstance(claimed_org, str):
+            return jsonify({"error": "claimed_org must be text"}), 400
 
         # The link has its own field, so add it to the text the link check scans.
         scan_text = f"{body}\n{link}" if link else body
@@ -128,7 +167,14 @@ def create_app():
             sender_domain=sender_domain,
             claimed_org=claimed_org,
             attachment_filename=attachment_filename,
+            attachment_bytes=attachment_bytes,
+            authentication_results=authentication_results,
+            allow_virustotal_upload=bool(attachment_bytes and share_with_virustotal and Config.VT_FILE_UPLOAD_ENABLED),
         )
+        if attachment_bytes and share_with_virustotal:
+            result["reasons"].append("Submitter consent to VirusTotal file sharing was recorded for this report.")
+        elif attachment_bytes:
+            result["reasons"].append("VirusTotal file upload was not authorized; file bytes were not sent to VirusTotal.")
 
         with SessionLocal() as session:
             report = make_report(

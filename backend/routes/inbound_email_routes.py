@@ -42,17 +42,35 @@ class _EmailHTMLText(HTMLParser):
 
 def _message_body(email):
     text = email.get("text")
-    if isinstance(text, str) and text.strip():
-        return text.strip()
+    parts = [text.strip()] if isinstance(text, str) and text.strip() else []
 
+    # Include HTML anchor hrefs and readable text even when a plain-text alternative exists.
     html = email.get("html")
-    if not isinstance(html, str) or not html.strip():
-        return ""
+    if isinstance(html, str) and html.strip():
+        parser = _EmailHTMLText()
+        parser.feed(html)
+        parser.close()
+        parts.extend(parser.parts)
+    return "\n".join(dict.fromkeys(parts))
 
-    parser = _EmailHTMLText()
-    parser.feed(html)
-    parser.close()
-    return "\n".join(parser.parts)
+
+def _authentication_results(headers):
+    """Extract Authentication-Results values from provider-returned header shapes."""
+    if isinstance(headers, dict):
+        return [value[:10000] for name, value in headers.items()
+                if isinstance(name, str) and name.lower() == "authentication-results"
+                and isinstance(value, str)]
+    if isinstance(headers, list):
+        values = []
+        for item in headers:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("key")
+            value = item.get("value")
+            if isinstance(name, str) and name.lower() == "authentication-results" and isinstance(value, str):
+                values.append(value[:10000])
+        return values
+    return []
 
 
 def register_inbound_email_routes(app, SessionLocal, engine, Report, make_report):
@@ -101,10 +119,11 @@ def register_inbound_email_routes(app, SessionLocal, engine, Report, make_report
         sender = email.get("from") or ""
         subject = email.get("subject") or ""
         body = _message_body(email)
+        email_attachments = email.get("attachments") if isinstance(email.get("attachments"), list) else []
         if not isinstance(sender, str) or not isinstance(subject, str):
             return jsonify({"error": "received email has invalid sender or subject"}), 422
-        if not isinstance(body, str) or not (subject.strip() or body.strip()):
-            return jsonify({"error": "received email has no analyzable subject or body"}), 422
+        if not isinstance(body, str) or not (subject.strip() or body.strip() or email_attachments):
+            return jsonify({"error": "received email has no analyzable subject, body, or attachment"}), 422
         if len(subject) > 255:
             return jsonify({"error": "received email subject exceeds the 255 character database limit"}), 422
         if len(body) > 1_000_000:
@@ -115,16 +134,21 @@ def register_inbound_email_routes(app, SessionLocal, engine, Report, make_report
         if len(actual_sender) > 255:
             return jsonify({"error": "received email sender exceeds the 255 character database limit"}), 422
         attachment_names = [
-            item.get("filename") for item in (email.get("attachments") or [])
-            if isinstance(item, dict) and isinstance(item.get("filename"), str)
+            item.get("filename") for item in email_attachments
+            if isinstance(item, dict) and isinstance(item.get("filename"), str) and item.get("filename").strip()
         ]
+        if email_attachments and not attachment_names:
+            attachment_names = ["(unnamed inbound attachment)"]
         attachment_filename = ", ".join(attachment_names)[:255] or None
+        auth_results = _authentication_results(email.get("headers"))
         result = combine_results(
             subject=subject,
             body=body,
             sender_domain=extract_domain_from_email(actual_sender),
             sender_display_name=sender_name,
             sender_email=actual_sender,
+            authentication_results=auth_results,
+            attachment_filename=attachment_names or None,
         )
 
         try:

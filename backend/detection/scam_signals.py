@@ -46,9 +46,9 @@ PHISHING_DOMAIN_WORDS = {
 }
 
 # Points
-BRAND_OR_GOV_IMPERSONATION = 40
+BRAND_OR_GOV_IMPERSONATION = 30
 SECRET_REQUEST = 25
-PRIZE_SCAM = 15
+PRIZE_SCAM = 25
 LURE = 10
 SENDER_DOMAIN_CAP = 60
 
@@ -58,6 +58,7 @@ SECRET_PHRASES = [
 ]
 LURE_PHRASES_EN = [
     "click here", "click the link", "click on the link", "click below",
+    "document shared with you", "shared document", "enable macros", "enable content",
     "update details", "update required", "payment failed",
     "restore access", "regain access", "storage is full", "mailbox is full",
 ]
@@ -156,7 +157,9 @@ def check_scam_signals(subject: str, body: str, sender_domain: str = "", claimed
     score = 0
     reasons = []
 
-    points, domain_reasons = check_sender_domain(sender_domain, skip_impersonation=bool(claimed_org))
+    # Skip duplicate brand checks only for claims the text checker actually understands.
+    recognized_claim = claimed_org.strip().lower() in KNOWN_ORG_DOMAINS
+    points, domain_reasons = check_sender_domain(sender_domain, skip_impersonation=recognized_claim)
     score += points
     reasons.extend(domain_reasons)
 
@@ -169,10 +172,16 @@ def check_scam_signals(subject: str, body: str, sender_domain: str = "", claimed
     if prizes:
         score += PRIZE_SCAM
         reasons.append(f"Looks like a prize or lottery scam ({', '.join(prizes[:2])}).")
+        if re.search(r"https?://|www\.", body, re.IGNORECASE):
+            score += 15
+            reasons.append("Prize or lottery lure includes an external link.")
 
     lures = _found(text, LURE_PHRASES_EN + LURE_PHRASES_AM)
     if lures:
         score += LURE
         reasons.append(f"Pushes the reader to click or act through a link ({', '.join(lures[:2])}).")
+    if "storage is full" in text and "upgrade now" in text:
+        score += 20
+        reasons.append("Pairs a storage-full warning with an immediate upgrade prompt, a common account-takeover lure.")
 
     return {"risk_score": min(score, 100), "reasons": reasons}
