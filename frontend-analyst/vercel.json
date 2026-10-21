@@ -13,6 +13,10 @@
       "destination": "https://team-project-wanza.onrender.com/compliance-status"
     },
     {
+      "source": "/compliance-assessments",
+      "destination": "https://team-project-wanza.onrender.com/compliance-assessments"
+    },
+    {
       "source": "/inbox/:path*",
       "destination": "https://team-project-wanza.onrender.com/inbox/:path*"
     },

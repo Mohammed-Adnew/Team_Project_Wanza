@@ -23,6 +23,12 @@ export default function App() {
   const [active, setActive] = useState("Overview");
   const [search, setSearch] = useState("");
   const [compliance, setCompliance] = useState(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [complianceError, setComplianceError] = useState("");
+  const [assessments, setAssessments] = useState([]);
+  const [assessmentDraft, setAssessmentDraft] = useState({ duty_id: "", status: "not_fulfilled", evidence_note: "", responsible: "", target_date: "" });
+  const [assessmentSaving, setAssessmentSaving] = useState(false);
+  const [assessmentMessage, setAssessmentMessage] = useState("");
   const [threats, setThreats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -65,28 +71,82 @@ export default function App() {
       .finally(() => setLoading(false));
   };
 
-  const loadCompliance = () => {
-    fetch("/compliance-status")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!data) return;
-        const total = data.statuses ? data.statuses.length : (data.obligations ? data.obligations.length : 0);
-        const met = data.statuses
-          ? data.statuses.filter((s) => s.status === "met").length
-          : (data.obligations ? data.obligations.filter((o) => o.status === "Met").length : 0);
-        const score = total > 0 ? Math.round((met / total) * 100) : 0;
-        const items = (data.obligations || []).map((ob) => {
-          const st = (data.statuses || []).find((s) => s.obligation_id === ob.id);
-          const isMet = st ? st.status === "met" : ob.status === "Met";
-          return {
-            title: ob.title,
-            isMet,
-            detail: ob.description || "Standard cybersecurity baseline requirement.",
-          };
-        });
-        setCompliance({ score, items, total, met });
-      })
-      .catch((err) => console.error("Compliance fetch error:", err));
+  const loadCompliance = async () => {
+    setComplianceLoading(true);
+    setComplianceError("");
+    try {
+      const response = await fetch("/compliance-status");
+      if (!response.ok) throw new Error(`Compliance service returned ${response.status}.`);
+      const data = await response.json();
+      const obligations = Array.isArray(data.obligations) ? data.obligations : [];
+      const statuses = Array.isArray(data.statuses) ? data.statuses : [];
+      const items = obligations.map((obligation) => {
+        const result = statuses.find((status) => status.obligation_id === obligation.id);
+        const normalizedStatus = String(result?.status || "unavailable").toLowerCase();
+        return {
+          id: obligation.id,
+          title: obligation.title || "Unnamed obligation",
+          status: normalizedStatus,
+          detail: result?.detail || obligation.description || "No assessment detail was provided.",
+        };
+      });
+      const total = items.length;
+      const met = items.filter((item) => item.status === "met").length;
+      const atRisk = items.filter((item) => item.status === "at risk").length;
+      const unmet = items.filter((item) => item.status === "unmet").length;
+      setCompliance({
+        score: total ? Math.round((met / total) * 100) : 0,
+        items,
+        total,
+        met,
+        atRisk,
+        unmet,
+      });
+    } catch (err) {
+      setComplianceError(err.message || "Could not load compliance readiness.");
+      console.error("Compliance fetch error:", err);
+    } finally {
+      setComplianceLoading(false);
+    }
+  };
+
+  const loadAssessments = async () => {
+    try {
+      const response = await fetch("/compliance-assessments");
+      if (!response.ok) throw new Error(`Manual assessment service returned ${response.status}.`);
+      const rows = await response.json();
+      if (!Array.isArray(rows)) throw new Error("Manual assessment response was not a list.");
+      setAssessments(rows);
+    } catch (err) {
+      setAssessmentMessage(err.message || "Could not load manual assessments.");
+    }
+  };
+
+  const saveAssessment = async (assessment) => {
+    setAssessmentSaving(true);
+    setAssessmentMessage("");
+    try {
+      const response = await fetch("/compliance-assessments", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...assessment,
+          target_date: assessment.target_date || null,
+          evidence_note: assessment.evidence_note || null,
+          responsible: assessment.responsible || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Save failed (${response.status}).`);
+      setAssessmentMessage(`Saved assessment ${result.duty_id}.`);
+      await loadAssessments();
+      return true;
+    } catch (err) {
+      setAssessmentMessage(err.message || "Could not save the assessment.");
+      return false;
+    } finally {
+      setAssessmentSaving(false);
+    }
   };
 
   const handleStatusChange = async (reportId, newStatus) => {
@@ -113,6 +173,7 @@ export default function App() {
   useEffect(() => {
     loadReports();
     loadCompliance();
+    loadAssessments();
   }, []);
 
   const visibleThreats = threats.filter((threat) =>
@@ -201,7 +262,7 @@ export default function App() {
                 {active === "Compliance" && "National Cybersecurity & Data Protection readiness tracking."}
               </p>
             </div>
-            <button className="outline-button" onClick={() => { setSearch(""); loadReports(); loadCompliance(); }}>
+            <button className="outline-button" onClick={() => { setSearch(""); loadReports(); loadCompliance(); loadAssessments(); }}>
               ↻ Refresh Data
             </button>
           </section>
@@ -474,36 +535,88 @@ export default function App() {
           {active === "Compliance" && (
             <div className="compliance-workspace">
               <Panel
-                title="National Cybersecurity Framework Readiness"
-                extra={<span className="readiness-tag">REGULATORY AUDIT</span>}
+                title="Compliance Readiness"
+                extra={<span className="readiness-tag">REPORT-BASED CHECKS</span>}
               >
+                <p className="readiness-scope-note">
+                  Report based checks and analyst entered INSA assessments are shown separately. Enter the duty ID used by your INSA policy checklist.
+                </p>
+                {complianceError && (
+                  <div className="readiness-error" role="alert">
+                    {complianceError} Use “Refresh Data” to try again.
+                  </div>
+                )}
                 <div className="readiness-header-card">
                   <div className="readiness-score">
-                    <strong>{compliance ? compliance.score : 0}<span>%</span></strong>
-                    <span>{compliance ? `${compliance.met}/${compliance.total} obligations satisfied` : "Auditing..."}</span>
+                    <strong>{compliance ? compliance.score : "—"}<span>{compliance ? "%" : ""}</span></strong>
+                    <span>{complianceLoading ? "Refreshing checks…" : compliance ? `${compliance.met}/${compliance.total} checks met` : "Waiting for compliance data"}</span>
                   </div>
-                  <div className="progress-track" style={{ height: "14px", flex: 1 }}>
-                    <div style={{ width: `${compliance ? compliance.score : 0}%` }} />
+                  <div
+                    className="progress-track"
+                    role="progressbar"
+                    aria-label="Report-based compliance checks met"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow={compliance?.score ?? 0}
+                    style={{ height: "14px", flex: 1 }}
+                  >
+                    <div style={{ width: `${compliance?.score ?? 0}%` }} />
                   </div>
                 </div>
 
+                {compliance && (
+                  <div className="readiness-status-summary" aria-label="Compliance check totals">
+                    <span className="readiness-count met">Met: {compliance.met}</span>
+                    <span className="readiness-count at-risk">At risk: {compliance.atRisk}</span>
+                    <span className="readiness-count unmet">Unmet: {compliance.unmet}</span>
+                  </div>
+                )}
+
                 <div className="compliance-grid-cards">
-                  {compliance && compliance.items.length > 0 ? (
+                  {complianceLoading && !compliance ? (
+                    <div>Loading compliance checks…</div>
+                  ) : compliance && compliance.items.length > 0 ? (
                     compliance.items.map((item, idx) => (
-                      <div key={idx} className={`compliance-card ${item.isMet ? "border-green" : "border-amber"}`}>
+                      <div key={item.id || idx} className={`compliance-card ${item.status === "met" ? "border-green" : item.status === "at risk" ? "border-risk" : "border-amber"}`}>
                         <div className="card-top">
-                          <span className={item.isMet ? "check-badge" : "pending-badge"}>
-                            {item.isMet ? "COMPLIANT" : "ACTION REQUIRED"}
+                          <span className={`compliance-status-badge ${item.status === "met" ? "is-met" : item.status === "at risk" ? "is-at-risk" : "is-unmet"}`}>
+                            {item.status === "met" ? "MET" : item.status === "at risk" ? "AT RISK" : item.status === "unmet" ? "UNMET" : "UNAVAILABLE"}
                           </span>
-                          <span className="obligation-id">REQ-0{idx + 1}</span>
+                          <span className="obligation-id">{item.id || `REQ-0${idx + 1}`}</span>
                         </div>
                         <h4>{item.title}</h4>
                         <p>{item.detail}</p>
                       </div>
                     ))
                   ) : (
-                    <div>Auditing compliance obligations...</div>
+                    <div>{complianceError ? "Compliance checks could not be loaded." : "No report-based compliance checks were returned."}</div>
                   )}
+                </div>
+              </Panel>
+              <Panel title="Manual INSA Assessments" extra={<span className="readiness-tag">SAVED TO DATABASE</span>}>
+                {assessmentMessage && <div className={assessmentMessage.startsWith("Saved ") ? "assessment-message success" : "assessment-message"} role="status">{assessmentMessage}</div>}
+                <form className="assessment-form" onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (await saveAssessment(assessmentDraft)) setAssessmentDraft({ duty_id: "", status: "not_fulfilled", evidence_note: "", responsible: "", target_date: "" });
+                }}>
+                  <label>INSA duty ID<input required maxLength="255" value={assessmentDraft.duty_id} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, duty_id: event.target.value })} placeholder="For example, use the ID from your policy checklist" /></label>
+                  <label>Status<select value={assessmentDraft.status} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, status: event.target.value })}><option value="fulfilled">Fulfilled</option><option value="in_progress">In progress</option><option value="not_fulfilled">Not fulfilled</option></select></label>
+                  <label>Responsible<input maxLength="255" value={assessmentDraft.responsible} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, responsible: event.target.value })} /></label>
+                  <label>Target date<input type="date" value={assessmentDraft.target_date} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, target_date: event.target.value })} /></label>
+                  <label className="assessment-evidence">Evidence note<textarea rows="3" value={assessmentDraft.evidence_note} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, evidence_note: event.target.value })} /></label>
+                  <button className="assessment-save" type="submit" disabled={assessmentSaving}>{assessmentSaving ? "Saving…" : "Save assessment"}</button>
+                </form>
+                <div className="assessment-list">
+                  {assessments.length === 0 ? <p>No manual assessments have been saved yet.</p> : assessments.map((item) => (
+                    <form className="assessment-row" key={item.duty_id} onSubmit={(event) => { event.preventDefault(); saveAssessment(item); }}>
+                      <strong>{item.duty_id}</strong>
+                      <select aria-label={`Status for ${item.duty_id}`} value={item.status || "not_fulfilled"} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, status: event.target.value } : row))}><option value="fulfilled">Fulfilled</option><option value="in_progress">In progress</option><option value="not_fulfilled">Not fulfilled</option></select>
+                      <input aria-label={`Responsible for ${item.duty_id}`} placeholder="Responsible" maxLength="255" value={item.responsible || ""} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, responsible: event.target.value } : row))} />
+                      <input aria-label={`Target date for ${item.duty_id}`} type="date" value={item.target_date || ""} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, target_date: event.target.value } : row))} />
+                      <textarea aria-label={`Evidence note for ${item.duty_id}`} rows="2" placeholder="Evidence note" value={item.evidence_note || ""} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, evidence_note: event.target.value } : row))} />
+                      <button className="assessment-save" type="submit" disabled={assessmentSaving}>Save changes</button>
+                    </form>
+                  ))}
                 </div>
               </Panel>
             </div>
