@@ -1,11 +1,11 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
-from sqlalchemy import MetaData, Table, create_engine, inspect, select
+from sqlalchemy import MetaData, Table, create_engine, inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
@@ -20,6 +20,7 @@ engine = create_engine(Config.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 
 ALLOWED_STATUSES = {"new", "investigating", "resolved"}
+ASSESSMENT_STATUSES = {"fulfilled", "in_progress", "not_fulfilled"}
 
 _inbox_table = None
 
@@ -334,6 +335,77 @@ def create_app():
             "obligations": COMPLIANCE_OBLIGATIONS,
             "statuses": evaluate_compliance_status(reports),
         })
+
+    @app.route("/compliance-assessments", methods=["GET"])
+    def get_compliance_assessments():
+        """Read analyst-entered INSA assessments from the Database-owned table."""
+        if not inspect(engine).has_table("compliance_assessments"):
+            return jsonify({"error": "the compliance_assessments table does not exist"}), 503
+        with engine.connect() as connection:
+            rows = connection.execute(text("""
+                SELECT duty_id, status, evidence_note, responsible, target_date, updated_at
+                FROM compliance_assessments ORDER BY duty_id
+            """)).mappings().all()
+        return jsonify([{
+            **dict(row),
+            "target_date": row["target_date"].isoformat() if row["target_date"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        } for row in rows])
+
+    @app.route("/compliance-assessments", methods=["PUT"])
+    def save_compliance_assessment():
+        """Create or update a manual assessment without changing the table schema."""
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+        duty_id = data.get("duty_id")
+        status = data.get("status")
+        if not isinstance(duty_id, str) or not duty_id.strip() or len(duty_id.strip()) > 255:
+            return jsonify({"error": "duty_id must be text between 1 and 255 characters"}), 400
+        if not isinstance(status, str) or status not in ASSESSMENT_STATUSES:
+            return jsonify({"error": "status must be fulfilled, in_progress, or not_fulfilled"}), 400
+        for field, limit in (("evidence_note", None), ("responsible", 255)):
+            value = data.get(field)
+            if value is not None and not isinstance(value, str):
+                return jsonify({"error": f"{field} must be text"}), 400
+            if value is not None and limit is not None and len(value) > limit:
+                return jsonify({"error": f"{field} must be at most {limit} characters"}), 400
+        target_date = data.get("target_date") or None
+        if target_date is not None:
+            if not isinstance(target_date, str):
+                return jsonify({"error": "target_date must be a YYYY-MM-DD date or empty"}), 400
+            try:
+                target_date = date.fromisoformat(target_date)
+            except ValueError:
+                return jsonify({"error": "target_date must be a valid YYYY-MM-DD date"}), 400
+        if not inspect(engine).has_table("compliance_assessments"):
+            return jsonify({"error": "the compliance_assessments table does not exist"}), 503
+
+        with engine.begin() as connection:
+            row = connection.execute(text("""
+                INSERT INTO compliance_assessments
+                    (duty_id, status, evidence_note, responsible, target_date, updated_at)
+                VALUES
+                    (:duty_id, :status, :evidence_note, :responsible, :target_date, CURRENT_TIMESTAMP)
+                ON CONFLICT (duty_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    evidence_note = EXCLUDED.evidence_note,
+                    responsible = EXCLUDED.responsible,
+                    target_date = EXCLUDED.target_date,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING duty_id, status, evidence_note, responsible, target_date, updated_at
+            """), {
+                "duty_id": duty_id.strip(),
+                "status": status,
+                "evidence_note": data.get("evidence_note"),
+                "responsible": data.get("responsible"),
+                "target_date": target_date,
+            }).mappings().one()
+        return jsonify({
+            **dict(row),
+            "target_date": row["target_date"].isoformat() if row["target_date"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }), 200
 
     register_inbound_email_routes(app, SessionLocal, engine, Report, make_report)
 
