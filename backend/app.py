@@ -13,7 +13,8 @@ from config import Config
 from models import Report
 from detection.combiner import combine_results
 from detection.text_check import extract_domain_from_email, split_sender
-from compliance.obligations import COMPLIANCE_OBLIGATIONS, evaluate_compliance_status
+from compliance.obligations import COMPLIANCE_OBLIGATIONS, evaluate_compliance_status, build_insa_assessments
+from detection.sender_auth import authentication_statuses_from_reasons
 from routes.inbound_email_routes import register_inbound_email_routes
 
 engine = create_engine(Config.DATABASE_URL, pool_pre_ping=True)
@@ -57,6 +58,7 @@ def make_report(*, sender_claimed, sender_actual, subject, body, link,
 
 def report_to_dict(report):
     """Turns a Report row into a JSON-friendly dict (reasons is stored as JSON text)."""
+    reasons = json.loads(report.reasons) if report.reasons else []
     return {
         "id": report.id,
         "sender_claimed": report.sender_claimed,
@@ -68,7 +70,8 @@ def report_to_dict(report):
         "risk_score": report.risk_score,
         "verdict": report.verdict,
         "severity": report.severity,
-        "reasons": json.loads(report.reasons) if report.reasons else [],
+        "reasons": reasons,
+        "sender_authentication": authentication_statuses_from_reasons(reasons),
         "source": report.source,
         "status": report.status,
         "notes": report.notes,
@@ -294,6 +297,17 @@ def create_app():
             reports = session.query(Report).order_by(Report.created_at.desc()).all()
             return jsonify([report_to_dict(r) for r in reports])
 
+    @app.route("/inbound-emails", methods=["GET"])
+    def get_inbound_emails():
+        """Return only messages received through the configured inbound provider."""
+        limit = min(max(request.args.get("limit", default=50, type=int), 1), 100)
+        with SessionLocal() as session:
+            reports = (session.query(Report)
+                       .filter(Report.source == "inbound")
+                       .order_by(Report.created_at.desc())
+                       .limit(limit).all())
+            return jsonify([report_to_dict(report) for report in reports])
+
     @app.route("/reports/<int:report_id>", methods=["GET"])
     def get_report(report_id):
         with SessionLocal() as session:
@@ -370,6 +384,8 @@ def create_app():
                 return jsonify({"error": f"{field} must be text"}), 400
             if value is not None and limit is not None and len(value) > limit:
                 return jsonify({"error": f"{field} must be at most {limit} characters"}), 400
+        if status == "fulfilled" and not (data.get("evidence_note") or "").strip():
+            return jsonify({"error": "evidence_note is required when an assessment is marked fulfilled"}), 400
         target_date = data.get("target_date") or None
         if target_date is not None:
             if not isinstance(target_date, str):
@@ -406,6 +422,38 @@ def create_app():
             "target_date": row["target_date"].isoformat() if row["target_date"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }), 200
+
+    @app.route("/insa-obligations", methods=["GET"])
+    def get_insa_obligations():
+        """Return the Article 7 catalog joined with saved manual assessments."""
+        if not inspect(engine).has_table("compliance_assessments"):
+            return jsonify({"error": "the compliance_assessments table does not exist"}), 503
+        with engine.connect() as connection:
+            rows = connection.execute(text("""
+                SELECT duty_id, status, evidence_note, responsible, target_date, updated_at
+                FROM compliance_assessments
+            """)).mappings().all()
+        saved_rows = [{
+            **dict(row),
+            "target_date": row["target_date"].isoformat() if row["target_date"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        } for row in rows]
+        duties = build_insa_assessments(saved_rows)
+        counts = {
+            "met": sum(item["status"] == "met" for item in duties),
+            "at_risk": sum(item["status"] == "at risk" for item in duties),
+            "unmet": sum(item["status"] == "unmet" for item in duties),
+            "not_assessed": sum(item["status"] == "not assessed" for item in duties),
+            "total": len(duties),
+        }
+        progress = round((counts["met"] + counts["at_risk"] * 0.5) / counts["total"] * 100) if counts["total"] else 0
+        return jsonify({
+            "framework": "Ethiopia Critical Infrastructure Cybersecurity Proclamation No. 1426/2026, Article 7",
+            "scope_note": "Applies to owners of designated critical infrastructure. This evidence tracker is a self-assessment aid, not a legal applicability decision or certification.",
+            "progress_percent": progress,
+            "counts": counts,
+            "obligations": duties,
+        })
 
     register_inbound_email_routes(app, SessionLocal, engine, Report, make_report)
 

@@ -12,6 +12,53 @@ RESPONSE_WINDOW_HOURS = 48
 MONITORING_WINDOW_DAYS = 30
 VALID_SEVERITIES = {"high", "medium", "low"}
 
+# Article 7 of Ethiopia's Critical Infrastructure Cybersecurity Proclamation
+# No. 1426/2026 lists 18 duties for owners of designated critical infrastructure.
+# This catalog is an evidence-tracking aid, not a legal applicability decision.
+INSA_DUTIES = [
+    ("insa_01", "Develop a cybersecurity program", "Develop the institution's cybersecurity program using national cybersecurity frameworks.", "Approved program, owner, scope, and review date."),
+    ("insa_02", "Implement mandatory cybersecurity frameworks", "Implement the mandatory cybersecurity frameworks issued or recognized by INSA.", "Framework mapping, implementation records, and gaps."),
+    ("insa_03", "Maintain an institutional cybersecurity framework", "Develop and implement an institutional framework consistent with applicable laws, policies, and INSA technical policies.", "Approved framework, control mapping, and version history."),
+    ("insa_04", "Classify and protect critical assets", "Classify and protect assets according to applicable INSA standards.", "Asset inventory, classification criteria, and safeguards."),
+    ("insa_05", "Conduct regular cyber risk and impact assessments", "Assess cybersecurity risks and impacts regularly under the system established by INSA.", "Dated risk register, impact analysis, treatment owners, and review cycle."),
+    ("insa_06", "Participate in the national cyber risk survey", "Participate in INSA's annual national cybersecurity risk survey and provide relevant information.", "Submission records and correspondence."),
+    ("insa_07", "Maintain cyber audit and evaluation certification", "Obtain, maintain, and renew the required cyber audit and cybersecurity inspection/evaluation certificate.", "Certificate, scope, issue/expiry dates, and audit report."),
+    ("insa_08", "Remediate audit and assessment findings", "Complete corrective actions for audit and inspection findings within the prescribed time.", "Findings register, remediation evidence, and closure approvals."),
+    ("insa_09", "Establish cybersecurity governance", "Create the cybersecurity organizational structure required by the national framework.", "Organization chart, mandates, escalation path, and meeting records."),
+    ("insa_10", "Employ qualified cybersecurity professionals", "Employ cybersecurity professionals with INSA-issued or recognized certifications, and arrange certification for existing staff as required.", "Role assignments, certification evidence, and staffing plan."),
+    ("insa_11", "Secure the technology supply chain", "Ensure the security of the supply chain for technology products in use.", "Supplier inventory, due diligence, security clauses, and risk reviews."),
+    ("insa_12", "Obtain security clearance before integration", "Obtain required security clearance for new or upgraded ICT systems before integrating them.", "System change records and applicable clearance approvals."),
+    ("insa_13", "Operate incident monitoring and response capability", "Establish and manage a center responsible for monitoring, reporting, and responding to cyber attacks under the applicable framework.", "SOC/center mandate, coverage, operating procedures, and response records."),
+    ("insa_14", "Notify and respond to incidents within 48 hours", "Notify the National Computer Emergency Response Center of cyber incidents within 48 hours and implement its applicable directions.", "Incident timeline, notification receipt, and corrective-action evidence."),
+    ("insa_15", "Exchange information with INSA", "Periodically exchange required information using the information exchange system established by INSA.", "Exchange schedule, submissions, and acknowledgements."),
+    ("insa_16", "Run cybersecurity exercises and training", "Develop and implement cybersecurity exercises and training, and participate in those facilitated by INSA.", "Training/exercise plan, attendance, results, and follow-up actions."),
+    ("insa_17", "Obtain required personnel security clearances", "Ensure staff or officials with access to critical infrastructure assets obtain security clearance from the relevant government body.", "Access-role list and clearance records, handled with appropriate confidentiality."),
+    ("insa_18", "Enforce cybersecurity professional ethics", "Ensure compliance with the professional ethics required for cybersecurity work.", "Applicable code of ethics, acknowledgement records, and enforcement process."),
+]
+
+
+def build_insa_assessments(saved_rows):
+    """Join the fixed Article 7 catalog to saved evidence/status records."""
+    saved = {row.get("duty_id"): row for row in (saved_rows or [])}
+    results = []
+    for duty_id, title, description, evidence_guidance in INSA_DUTIES:
+        row = saved.get(duty_id, {})
+        status = row.get("status")
+        status_map = {"fulfilled": "met", "in_progress": "at risk", "not_fulfilled": "unmet"}
+        results.append({
+            "id": duty_id,
+            "title": title,
+            "description": description,
+            "evidence_guidance": evidence_guidance,
+            "status": status_map.get(status, "not assessed"),
+            "assessment_status": status or "not_assessed",
+            "evidence_note": row.get("evidence_note") or "",
+            "responsible": row.get("responsible") or "",
+            "target_date": row.get("target_date"),
+            "updated_at": row.get("updated_at"),
+        })
+    return results
+
 COMPLIANCE_OBLIGATIONS = [
     {
         "id": "obl_1",

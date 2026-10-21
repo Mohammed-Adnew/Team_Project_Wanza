@@ -17,6 +17,10 @@
       "destination": "https://team-project-wanza.onrender.com/compliance-assessments"
     },
     {
+      "source": "/insa-obligations",
+      "destination": "https://team-project-wanza.onrender.com/insa-obligations"
+    },
+    {
       "source": "/inbox/:path*",
       "destination": "https://team-project-wanza.onrender.com/inbox/:path*"
     },
