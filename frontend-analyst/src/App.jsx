@@ -25,8 +25,7 @@ export default function App() {
   const [compliance, setCompliance] = useState(null);
   const [complianceLoading, setComplianceLoading] = useState(false);
   const [complianceError, setComplianceError] = useState("");
-  const [assessments, setAssessments] = useState([]);
-  const [assessmentDraft, setAssessmentDraft] = useState({ duty_id: "", status: "not_fulfilled", evidence_note: "", responsible: "", target_date: "" });
+  const [assessmentDrafts, setAssessmentDrafts] = useState({});
   const [assessmentSaving, setAssessmentSaving] = useState(false);
   const [assessmentMessage, setAssessmentMessage] = useState("");
   const [threats, setThreats] = useState([]);
@@ -61,6 +60,7 @@ export default function App() {
             status: (r.status || "new").toLowerCase(),
             score: r.risk_score ?? 0,
             reasons: Array.isArray(r.reasons) ? r.reasons : [],
+            senderAuthentication: r.sender_authentication || null,
             attachmentFilename: r.attachment_filename || "",
             reportSource: r.source || "unknown",
           };
@@ -75,9 +75,13 @@ export default function App() {
     setComplianceLoading(true);
     setComplianceError("");
     try {
-      const response = await fetch("/compliance-status");
+      const [response, insaResponse] = await Promise.all([
+        fetch("/compliance-status"),
+        fetch("/insa-obligations"),
+      ]);
       if (!response.ok) throw new Error(`Compliance service returned ${response.status}.`);
-      const data = await response.json();
+      if (!insaResponse.ok) throw new Error(`INSA assessment service returned ${insaResponse.status}.`);
+      const [data, insa] = await Promise.all([response.json(), insaResponse.json()]);
       const obligations = Array.isArray(data.obligations) ? data.obligations : [];
       const statuses = Array.isArray(data.statuses) ? data.statuses : [];
       const items = obligations.map((obligation) => {
@@ -101,24 +105,20 @@ export default function App() {
         met,
         atRisk,
         unmet,
+        insa,
       });
+      setAssessmentDrafts(Object.fromEntries((insa.obligations || []).map((item) => [item.id, {
+        duty_id: item.id,
+        status: item.assessment_status === "not_assessed" ? "" : item.assessment_status,
+        evidence_note: item.evidence_note || "",
+        responsible: item.responsible || "",
+        target_date: item.target_date || "",
+      }])));
     } catch (err) {
       setComplianceError(err.message || "Could not load compliance readiness.");
       console.error("Compliance fetch error:", err);
     } finally {
       setComplianceLoading(false);
-    }
-  };
-
-  const loadAssessments = async () => {
-    try {
-      const response = await fetch("/compliance-assessments");
-      if (!response.ok) throw new Error(`Manual assessment service returned ${response.status}.`);
-      const rows = await response.json();
-      if (!Array.isArray(rows)) throw new Error("Manual assessment response was not a list.");
-      setAssessments(rows);
-    } catch (err) {
-      setAssessmentMessage(err.message || "Could not load manual assessments.");
     }
   };
 
@@ -139,7 +139,7 @@ export default function App() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || `Save failed (${response.status}).`);
       setAssessmentMessage(`Saved assessment ${result.duty_id}.`);
-      await loadAssessments();
+      await loadCompliance();
       return true;
     } catch (err) {
       setAssessmentMessage(err.message || "Could not save the assessment.");
@@ -173,7 +173,6 @@ export default function App() {
   useEffect(() => {
     loadReports();
     loadCompliance();
-    loadAssessments();
   }, []);
 
   const visibleThreats = threats.filter((threat) =>
@@ -262,7 +261,7 @@ export default function App() {
                 {active === "Compliance" && "National Cybersecurity & Data Protection readiness tracking."}
               </p>
             </div>
-            <button className="outline-button" onClick={() => { setSearch(""); loadReports(); loadCompliance(); loadAssessments(); }}>
+            <button className="outline-button" onClick={() => { setSearch(""); loadReports(); loadCompliance(); }}>
               ↻ Refresh Data
             </button>
           </section>
@@ -296,9 +295,9 @@ export default function App() {
 
                 <article className="metric-card">
                   <div className="metric-icon green">◇</div>
-                  <div className="metric-label">Compliance Readiness</div>
-                  <div className="metric-value">{compliance ? `${compliance.score}%` : "--"}</div>
-                  <div className="metric-note">{compliance ? `${compliance.met}/${compliance.total} obligations met` : "Auditing..."}</div>
+                  <div className="metric-label">INSA Assessment Progress</div>
+                  <div className="metric-value">{compliance?.insa ? `${compliance.insa.progress_percent}%` : "--"}</div>
+                  <div className="metric-note">{compliance?.insa ? `${compliance.insa.counts.met}/${compliance.insa.counts.total} duties fulfilled` : "Loading assessments…"}</div>
                 </article>
               </section>
 
@@ -511,6 +510,20 @@ export default function App() {
                         <pre className="raw-box">{selectedThreat.body}</pre>
                       </div>
                       <div className="modal-field">
+                        <label>Sender authentication (reported header results):</label>
+                        <div className="auth-results-grid">
+                          {["spf", "dkim", "dmarc"].map((method) => (
+                            <div className="auth-result-item" key={method}>
+                              <strong>{method.toUpperCase()}</strong>
+                              <span>{selectedThreat.senderAuthentication?.results?.[method] || "not available"}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="auth-result-note">
+                          Source: {selectedThreat.senderAuthentication?.source || "not supplied or not parseable"}. These header values are reported by the receiving mail system and are not independently verified by PhishWatch.
+                        </p>
+                      </div>
+                      <div className="modal-field">
                         <label>Detection reasons and coverage:</label>
                         {selectedThreat.reasons.length > 0 ? (
                           <ul className="reason-list">
@@ -536,10 +549,10 @@ export default function App() {
             <div className="compliance-workspace">
               <Panel
                 title="Compliance Readiness"
-                extra={<span className="readiness-tag">REPORT-BASED CHECKS</span>}
+                extra={<span className="readiness-tag">ARTICLE 7 SELF-ASSESSMENT</span>}
               >
                 <p className="readiness-scope-note">
-                  Report based checks and analyst entered INSA assessments are shown separately. Enter the duty ID used by your INSA policy checklist.
+                  {compliance?.insa?.framework || "Loading INSA framework…"}. {compliance?.insa?.scope_note || "The tracker records evidence and progress; it is not a legal applicability decision or certification."}
                 </p>
                 {complianceError && (
                   <div className="readiness-error" role="alert">
@@ -548,30 +561,34 @@ export default function App() {
                 )}
                 <div className="readiness-header-card">
                   <div className="readiness-score">
-                    <strong>{compliance ? compliance.score : "—"}<span>{compliance ? "%" : ""}</span></strong>
-                    <span>{complianceLoading ? "Refreshing checks…" : compliance ? `${compliance.met}/${compliance.total} checks met` : "Waiting for compliance data"}</span>
+                    <strong>{compliance?.insa ? compliance.insa.progress_percent : "—"}<span>{compliance?.insa ? "%" : ""}</span></strong>
+                    <span>{complianceLoading ? "Refreshing assessments…" : compliance?.insa ? `${compliance.insa.counts.met} fulfilled · ${compliance.insa.counts.at_risk} in progress · ${compliance.insa.counts.total} duties` : "Waiting for assessment data"}</span>
                   </div>
                   <div
                     className="progress-track"
                     role="progressbar"
-                    aria-label="Report-based compliance checks met"
+                    aria-label="INSA self-assessment progress"
                     aria-valuemin="0"
                     aria-valuemax="100"
-                    aria-valuenow={compliance?.score ?? 0}
+                    aria-valuenow={compliance?.insa?.progress_percent ?? 0}
                     style={{ height: "14px", flex: 1 }}
                   >
-                    <div style={{ width: `${compliance?.score ?? 0}%` }} />
+                    <div style={{ width: `${compliance?.insa?.progress_percent ?? 0}%` }} />
                   </div>
                 </div>
+                <p className="readiness-scope-note">Progress gives an in-progress duty half credit. Fulfilled duties require an evidence note. Statuses are self-reported and need organizational review.</p>
 
-                {compliance && (
+                {compliance?.insa && (
                   <div className="readiness-status-summary" aria-label="Compliance check totals">
-                    <span className="readiness-count met">Met: {compliance.met}</span>
-                    <span className="readiness-count at-risk">At risk: {compliance.atRisk}</span>
-                    <span className="readiness-count unmet">Unmet: {compliance.unmet}</span>
+                    <span className="readiness-count met">Fulfilled: {compliance.insa.counts.met}</span>
+                    <span className="readiness-count at-risk">In progress: {compliance.insa.counts.at_risk}</span>
+                    <span className="readiness-count unmet">Not fulfilled: {compliance.insa.counts.unmet}</span>
+                    <span className="readiness-count">Not assessed: {compliance.insa.counts.not_assessed}</span>
                   </div>
                 )}
 
+                <h3 className="readiness-subheading">Automated operational checks</h3>
+                <p className="readiness-scope-note">These checks measure PhishWatch report activity. They are supporting evidence and are not a substitute for assessing the 18 institutional duties below.</p>
                 <div className="compliance-grid-cards">
                   {complianceLoading && !compliance ? (
                     <div>Loading compliance checks…</div>
@@ -593,30 +610,26 @@ export default function App() {
                   )}
                 </div>
               </Panel>
-              <Panel title="Manual INSA Assessments" extra={<span className="readiness-tag">SAVED TO DATABASE</span>}>
+              <Panel title="Article 7 Duty Assessments" extra={<span className="readiness-tag">SAVED TO DATABASE</span>}>
                 {assessmentMessage && <div className={assessmentMessage.startsWith("Saved ") ? "assessment-message success" : "assessment-message"} role="status">{assessmentMessage}</div>}
-                <form className="assessment-form" onSubmit={async (event) => {
-                  event.preventDefault();
-                  if (await saveAssessment(assessmentDraft)) setAssessmentDraft({ duty_id: "", status: "not_fulfilled", evidence_note: "", responsible: "", target_date: "" });
-                }}>
-                  <label>INSA duty ID<input required maxLength="255" value={assessmentDraft.duty_id} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, duty_id: event.target.value })} placeholder="For example, use the ID from your policy checklist" /></label>
-                  <label>Status<select value={assessmentDraft.status} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, status: event.target.value })}><option value="fulfilled">Fulfilled</option><option value="in_progress">In progress</option><option value="not_fulfilled">Not fulfilled</option></select></label>
-                  <label>Responsible<input maxLength="255" value={assessmentDraft.responsible} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, responsible: event.target.value })} /></label>
-                  <label>Target date<input type="date" value={assessmentDraft.target_date} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, target_date: event.target.value })} /></label>
-                  <label className="assessment-evidence">Evidence note<textarea rows="3" value={assessmentDraft.evidence_note} onChange={(event) => setAssessmentDraft({ ...assessmentDraft, evidence_note: event.target.value })} /></label>
-                  <button className="assessment-save" type="submit" disabled={assessmentSaving}>{assessmentSaving ? "Saving…" : "Save assessment"}</button>
-                </form>
                 <div className="assessment-list">
-                  {assessments.length === 0 ? <p>No manual assessments have been saved yet.</p> : assessments.map((item) => (
-                    <form className="assessment-row" key={item.duty_id} onSubmit={(event) => { event.preventDefault(); saveAssessment(item); }}>
-                      <strong>{item.duty_id}</strong>
-                      <select aria-label={`Status for ${item.duty_id}`} value={item.status || "not_fulfilled"} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, status: event.target.value } : row))}><option value="fulfilled">Fulfilled</option><option value="in_progress">In progress</option><option value="not_fulfilled">Not fulfilled</option></select>
-                      <input aria-label={`Responsible for ${item.duty_id}`} placeholder="Responsible" maxLength="255" value={item.responsible || ""} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, responsible: event.target.value } : row))} />
-                      <input aria-label={`Target date for ${item.duty_id}`} type="date" value={item.target_date || ""} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, target_date: event.target.value } : row))} />
-                      <textarea aria-label={`Evidence note for ${item.duty_id}`} rows="2" placeholder="Evidence note" value={item.evidence_note || ""} onChange={(event) => setAssessments((previous) => previous.map((row) => row.duty_id === item.duty_id ? { ...row, evidence_note: event.target.value } : row))} />
-                      <button className="assessment-save" type="submit" disabled={assessmentSaving}>Save changes</button>
-                    </form>
-                  ))}
+                  {!compliance?.insa ? <p>Loading Article 7 assessments…</p> : compliance.insa.obligations.map((item) => {
+                    const draft = assessmentDrafts[item.id] || { duty_id: item.id, status: "", evidence_note: "", responsible: "", target_date: "" };
+                    const updateDraft = (key, value) => setAssessmentDrafts((previous) => ({ ...previous, [item.id]: { ...draft, [key]: value } }));
+                    return (
+                      <form className="insa-duty-card" key={item.id} onSubmit={(event) => { event.preventDefault(); saveAssessment(draft); }}>
+                        <div className="insa-duty-heading"><div><strong>{item.id.toUpperCase()} · {item.title}</strong><p>{item.description}</p></div><span className={`insa-duty-status ${item.status.replaceAll(" ", "-")}`}>{item.status}</span></div>
+                        <p className="insa-evidence-guidance"><strong>Suggested evidence:</strong> {item.evidence_guidance}</p>
+                        <div className="insa-duty-fields">
+                          <label>Status<select required value={draft.status} onChange={(event) => updateDraft("status", event.target.value)}><option value="" disabled>Select assessment</option><option value="fulfilled">Fulfilled</option><option value="in_progress">In progress</option><option value="not_fulfilled">Not fulfilled</option></select></label>
+                          <label>Responsible<input maxLength="255" value={draft.responsible} onChange={(event) => updateDraft("responsible", event.target.value)} /></label>
+                          <label>Target date<input type="date" value={draft.target_date} onChange={(event) => updateDraft("target_date", event.target.value)} /></label>
+                          <label className="insa-evidence-field">Evidence note{draft.status === "fulfilled" ? " (required)" : ""}<textarea rows="2" required={draft.status === "fulfilled"} value={draft.evidence_note} onChange={(event) => updateDraft("evidence_note", event.target.value)} /></label>
+                        </div>
+                        <button className="assessment-save" type="submit" disabled={assessmentSaving}>{assessmentSaving ? "Saving…" : "Save duty assessment"}</button>
+                      </form>
+                    );
+                  })}
                 </div>
               </Panel>
             </div>

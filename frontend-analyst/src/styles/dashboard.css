@@ -1136,6 +1136,90 @@ td {
 }
 .assessment-message.success { color: #15803d; }
 .assessment-list { display: grid; gap: 12px; }
+.readiness-subheading {
+  margin: 1.5rem 0 0.35rem;
+  color: #172033;
+  font-size: 1rem;
+}
+.insa-duty-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #fff;
+}
+.insa-duty-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.insa-duty-heading strong { color: #172033; }
+.insa-duty-heading p,
+.insa-evidence-guidance,
+.auth-result-note {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.insa-duty-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.insa-duty-status.met { background: #dcfce7; color: #166534; }
+.insa-duty-status.at-risk { background: #ffedd5; color: #9a3412; }
+.insa-duty-status.unmet { background: #fee2e2; color: #991b1b; }
+.insa-duty-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.insa-duty-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #475569;
+  font-size: 0.82rem;
+}
+.insa-duty-fields input,
+.insa-duty-fields select,
+.insa-duty-fields textarea {
+  width: 100%;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #172033;
+  background: #fff;
+  font: inherit;
+}
+.insa-evidence-field { grid-column: 1 / -1; }
+.auth-results-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.auth-result-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f8fafc;
+  font-size: 0.82rem;
+}
+.auth-result-item strong { color: #475569; }
+.auth-result-item span { color: #172033; overflow-wrap: anywhere; }
+.auth-result-note { margin-top: 8px; }
 .assessment-row {
   display: grid;
   grid-template-columns: minmax(100px, 1fr) repeat(2, minmax(125px, 1fr)) minmax(135px, 1fr) minmax(180px, 2fr) auto;
@@ -1152,6 +1236,9 @@ td {
 @media (max-width: 600px) {
   .assessment-form, .assessment-row { grid-template-columns: 1fr; }
   .assessment-evidence { grid-column: auto; }
+  .insa-duty-fields, .auth-results-grid { grid-template-columns: 1fr; }
+  .insa-duty-heading { flex-direction: column; }
+  .insa-evidence-field { grid-column: auto; }
 }
 
 .card-top {

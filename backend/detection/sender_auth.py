@@ -9,6 +9,30 @@ _AUTH_RESULT = re.compile(r"(?:^|[;\s])(?P<method>spf|dkim|dmarc)\s*=\s*(?P<resu
 _METHODS = ("spf", "dkim", "dmarc")
 
 
+def authentication_statuses_from_reasons(reasons):
+    """Recover normalized auth results from the persisted human-readable reasons."""
+    text = "\n".join(item for item in (reasons or []) if isinstance(item, str))
+    results = {method: "not available" for method in _METHODS}
+    header_seen = False
+    for method in _METHODS:
+        match = re.search(
+            rf"Authentication-Results reports {method.upper()} ([A-Z]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            header_seen = True
+            results[method] = match.group(1).lower()
+        elif re.search(rf"Authentication-Results did not report {method.upper()}", text, re.IGNORECASE):
+            header_seen = True
+            results[method] = "not reported"
+    return {
+        "results": results,
+        "source": "reported Authentication-Results header" if header_seen else "not supplied or not parseable",
+        "independently_verified": False,
+    }
+
+
 def summarize_authentication_results(header_values):
     """Return explicit coverage/findings for an Authentication-Results value or values."""
     if isinstance(header_values, str):

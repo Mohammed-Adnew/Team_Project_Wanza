@@ -129,6 +129,21 @@ export default function ReportForm({ initialData }) {
               </section>
             )}
 
+            <section aria-label="Sender authentication results" className="rounded-xl border border-stone-200 bg-white p-4">
+              <h3 className="mb-2 text-xs font-bold text-stone-800">Sender authentication</h3>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {["spf", "dkim", "dmarc"].map((method) => (
+                  <div key={method} className="rounded-lg bg-stone-50 p-2">
+                    <span className="block font-bold uppercase text-stone-600">{method}</span>
+                    <span className="mt-1 block break-words text-stone-800">{result.sender_authentication?.results?.[method] || "not available"}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-stone-500">
+                Source: {result.sender_authentication?.source || "not supplied or not parseable"}. These reported header values are not independently verified by PhishWatch.
+              </p>
+            </section>
+
             <button type="button" onClick={startAnotherReport} className="w-full rounded-xl bg-stone-100 py-2.5 text-xs font-bold text-stone-800 transition hover:bg-stone-200">
               ↺ Report Another Email
             </button>

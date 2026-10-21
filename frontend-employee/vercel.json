@@ -9,6 +9,10 @@
       "destination": "https://team-project-wanza.onrender.com/reports/:path*"
     },
     {
+      "source": "/inbound-emails",
+      "destination": "https://team-project-wanza.onrender.com/inbound-emails"
+    },
+    {
       "source": "/compliance-status",
       "destination": "https://team-project-wanza.onrender.com/compliance-status"
     },
