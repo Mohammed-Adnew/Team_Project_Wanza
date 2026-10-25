@@ -1,3 +1,9 @@
+# 🛡️ WanzaGuard (Team Project Wanza)
+
+> Cloud-native phishing detection and INSA compliance verification platform.
+
+---
+
 ## 👥 Team Members
 
 | Full Name | Student ID |
