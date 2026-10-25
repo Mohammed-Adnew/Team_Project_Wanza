@@ -41,3 +41,18 @@ WanzaGuard automates enterprise email threat response and regulatory compliance 
 - **Backend:** Flask REST API deployed on **Render** (`team-project-wanza.onrender.com`)
 - **Frontends:** Dual React portals deployed on **Vercel** (`frontendanalyst` & `wanzaemployee`)
 - **Database:** PostgreSQL cloud database
+---
+
+## 🛠️ Developer Setup (Local Run)
+
+*For development and local testing only:*
+
+```bash
+git clone [https://github.com/Mohammed-Adnew/Team_Project_Wanza.git](https://github.com/Mohammed-Adnew/Team_Project_Wanza.git)
+cd Team_Project_Wanza
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+flask run
+```
