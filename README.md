@@ -26,7 +26,7 @@ Click below to test the live, running deployment directly in your browser:
 - 🎥 **[Watch Full Demonstration Video (Google Drive)](https://drive.google.com/file/d/15-PsAp0z_A6Fbehfo1H--yeWgjWuxqz8/view?usp=drivesdk)**
 - 👤 **[Watch Individual Contribution Demo — Kalkidan Khnet (Google Drive)](https://drive.google.com/file/d/13vMzigt5Quvi4KBUYYJgKHY837HHaZWx/view?usp=sharing)**
 - 👤 **[Watch Individual Contribution Demo — Mohammed Adnew (Google Drive)](https://drive.google.com/file/d/1b8JvfnlmR1TVeWyLE0BiN1K4XlOU2BQp/view?usp=sharing)**
-- - 👤 **[Watch Individual Contribution Demo — Kety Seyoum (Google Drive)](https://drive.google.com/file/d/1LOmNoVuz0kGqKw47_EFxe8iv39GoatzJ/view?usp=sharing)**
+-  👤 **[Watch Individual Contribution Demo — Kety Seyoum (Google Drive)](https://drive.google.com/file/d/1LOmNoVuz0kGqKw47_EFxe8iv39GoatzJ/view?usp=sharing)**
   
 ---
 
